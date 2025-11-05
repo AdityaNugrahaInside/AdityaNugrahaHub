@@ -1,0 +1,985 @@
+-- Game Link: roblox://placeId=97777561575736&gameInstanceId=2c18fdff-4fde-40b9-92b3-58e5ea0e81c1
+
+-- === PENGATURAN JUDUL & TANGGAL RILIS ===
+
+-- Deteksi nama game otomatis (dari MarketplaceService)
+local function GetGameName()
+    local success, result = pcall(function()
+        return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
+    end)
+    return success and result or "Roblox Game"
+end
+
+local NAMA_GAME = GetGameName() -- Panggil fungsi untuk mendapatkan nama
+
+-- GANTI TANGGAL DI BAWAH INI DENGAN TANGGAL RILIS GAME-NYA
+local TAHUN_RILIS = 2025
+local BULAN_RILIS = 10 -- (1 = Jan, 10 = Okt, 12 = Des)
+local TANGGAL_RILIS = 7
+-- =========================================
+
+-- game load & fps unlocker
+
+repeat task.wait() until game:IsLoaded()
+
+if setfpscap then
+    setfpscap(1000000)
+else
+    warn("Your exploit does not support setfpscap.")
+end
+
+-- library
+local l = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+-- services 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- settings
+local AutoTrainPower = false
+local AutoRaceTeleport = false
+
+-- Menggunakan timestamp rilis game, bukan server start
+local gameReleaseTimestamp = os.time({
+    year = TAHUN_RILIS, 
+    month = BULAN_RILIS, 
+    day = TANGGAL_RILIS, 
+    hour = 0, 
+    min = 0, 
+    sec = 0
+})
+
+local lastKnownWorld = 1
+local totalWinsGained = 0
+local raceSessionStart = os.time()
+local racesCompleted = 0
+-- Variabel untuk menampung harga telur yang dipilih (SINGLE SELECT)
+local selectedEggPrice = nil
+local selectedEggDrawName = nil 
+
+-- Variabel baru untuk Auto Hatch
+local AutoHatchEnabled = false
+local SelectedPetsToHatch = {} -- Cth: {Pet001 = true, Pet005 = true}
+
+-- Modules
+local module_upvr = require(ReplicatedStorage.Config.World)
+
+-- === PERBAIKAN: Menggunakan WaitForChild untuk PetConfig ===
+local PetConfig_upvr = nil
+local pet_config_success, pet_config_result = pcall(function()
+    local ConfigFolder = ReplicatedStorage:WaitForChild("Config", 10)
+    if not ConfigFolder then
+        warn("Gagal menemukan folder 'Config' di ReplicatedStorage.")
+        return nil
+    end
+
+    local PetModule = ConfigFolder:WaitForChild("Pet", 10)
+    if not PetModule then
+        warn("Gagal menemukan modul 'Pet' di ReplicatedStorage.Config.")
+        return nil
+    end
+
+    local requiredModule = require(PetModule)
+    
+    if requiredModule and requiredModule.Data then
+        return {
+            Pets = requiredModule.Data,
+            Lotterys = requiredModule.Lotterys,
+            Rarity = requiredModule.Rarity
+        }
+    else
+        return requiredModule
+    end
+end)
+if pet_config_success then
+    PetConfig_upvr = pet_config_result
+else
+    warn("Gagal load PetConfig:", pet_config_result)
+end
+-- === AKHIR PERBAIKAN ===
+
+-- PERBAIKAN: Load modules dengan error handling
+local Common_upvr, Client_upvr, RaceModule
+
+local common_success, common_result = pcall(function() return require(ReplicatedStorage.Modules.Common) end)
+if common_success then Common_upvr = common_result end
+local client_success, client_result = pcall(function() return require(ReplicatedStorage.Modules.Client) end)
+if client_success then Client_upvr = client_result end
+local race_success, race_result = pcall(function() return require(ReplicatedStorage.Modules.Client.Race) end)
+if race_success then RaceModule = race_result end
+
+---
+-- FUNCTION UTILITY
+---
+
+local function GetCurrentWins()
+    local wins_success, wins_module = pcall(function()
+        return require(ReplicatedStorage.Modules.Client.Wins)
+    end)
+    if wins_success and wins_module and wins_module.Get then
+        return wins_module.Get()
+    end
+    
+    if Client_upvr and Client_upvr.Data and Client_upvr.Data.Wins then
+        return Client_upvr.Data.Wins
+    end
+    
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    if leaderstats then
+        local winsStat = leaderstats:FindFirstChild("Wins") or 
+                         leaderstats:FindFirstChild("⭐ Wins") or
+                         leaderstats:FindFirstChild("Wins ⭐")
+        
+        if winsStat then
+            return winsStat.Value
+        end
+        
+        if Common_upvr and Common_upvr.Config and Common_upvr.Config.leaderstats then
+            local winsName = Common_upvr.Config.leaderstats.Wins
+            if winsName and leaderstats:FindFirstChild(winsName) then
+                return leaderstats:FindFirstChild(winsName).Value
+            end
+        end
+    end
+    
+    return 0
+end
+
+local function GetCurrentPower()
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    local powerStat = leaderstats and leaderstats:FindFirstChild("💪 Power")
+    return powerStat and powerStat.Value or 0
+end
+
+local function GetCurrentWorld()
+    local character = LocalPlayer.Character
+    if not character then return lastKnownWorld end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return lastKnownWorld end
+    
+    local playerPosition = humanoidRootPart.Position
+    local foundWorld = nil
+    
+    for _, world in ipairs(Workspace.Map:GetChildren()) do
+        if world:IsA("Model") and string.find(world.Name, "World") then
+            local worldCenter = world:FindFirstChild("Center") or world:FindFirstChildWhichIsA("Part")
+            if worldCenter then
+                local distance = (playerPosition - worldCenter.Position).Magnitude
+                if distance < 500 then
+                    local worldNum = string.match(world.Name, "World(%d+)")
+                    foundWorld = tonumber(worldNum) or 1
+                    break
+                end
+            end
+        end
+    end
+    
+    if foundWorld then
+        lastKnownWorld = foundWorld
+        return foundWorld
+    else
+        return lastKnownWorld
+    end
+end
+
+local function GetWorldName(worldId)
+    local worldIdNum = nil
+    
+    if type(worldId) == "number" then
+        worldIdNum = worldId
+    elseif type(worldId) == "string" then
+        local match = string.match(worldId, "World(%d+)")
+        if match then
+            worldIdNum = tonumber(match)
+        else
+            if tonumber(worldId) then
+                 worldIdNum = tonumber(worldId)
+            end
+        end
+    end
+    
+    if not worldIdNum then
+        return tostring(worldId)
+    end
+    
+    if module_upvr and module_upvr.Data then
+        local worldKey = string.format("World%03d", worldIdNum)
+        local worldData = module_upvr.Data[worldKey]
+        if worldData and worldData.WorldName then
+            return worldData.WorldName
+        end
+    end
+    
+    return "World " .. tostring(worldIdNum)
+end
+
+local function GetTrainPowerData(worldId, trainIndex)
+    local actualTrainNumber = (worldId - 1) * 12 + trainIndex
+    local trainKey = string.format("TrainPower%03d", actualTrainNumber)
+    return module_upvr.Train[trainKey]
+end
+
+local function UpgradeTrainPower(worldId, trainIndex)
+    local args = {
+        buffer.fromstring("\028"),
+        buffer.fromstring("\254\002\000\006\005Power" .. string.char(1) .. string.char(trainIndex))
+    }
+    
+    local success, result = pcall(function()
+        game:GetService("ReplicatedStorage"):WaitForChild("Warp"):WaitForChild("Index"):WaitForChild("Event"):WaitForChild("Reliable"):FireServer(unpack(args))
+        return true
+    end)
+    
+    return success
+end
+
+local function LeaveRace()
+    if Common_upvr and Common_upvr.Events and Common_upvr.Events.RaceFunction then
+        local success, raceLeft, spawnCFrame = pcall(function()
+            return Common_upvr.Events.RaceFunction:InvokeServer("OnLeave")
+        end)
+        
+        if success then
+            return true
+        end
+    end
+    return false
+end
+
+local function IsRacing()
+    if RaceModule and RaceModule.Racing then
+        return RaceModule.Racing()
+    end
+    return false
+end
+
+local function GetFinishLinePosition()
+    local stage18 = Workspace:FindFirstChild("Stage18")
+    if not stage18 then
+        local track = Workspace:FindFirstChild("Track")
+        if track then
+            stage18 = track:FindFirstChild("Stage18")
+        end
+    end
+    
+    if stage18 then
+        local sign = stage18:FindFirstChild("Sign")
+        if sign then
+            return sign.Position
+        else
+            local firstPart = stage18:FindFirstChildWhichIsA("Part")
+            if firstPart then
+                return firstPart.Position
+            end
+        end
+    end
+    
+    return Vector3.new(-50000, 100, 0)
+end
+
+local function GetStartLinePosition()
+    local stage01 = Workspace:FindFirstChild("Stage01")
+    if not stage01 then
+        local track = Workspace:FindFirstChild("Track")
+        if track then
+            stage01 = track:FindFirstChild("Stage01")
+        end
+    end
+    
+    if stage01 then
+        local firstPart = stage01:FindFirstChildWhichIsA("Part")
+        if firstPart then
+            return firstPart.Position
+        end
+    end
+    
+    return Vector3.new(-50000, 100, 10)
+end
+
+local function TeleportToPosition(position)
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then
+        return false
+    end
+    
+    local humanoidRootPart = character.HumanoidRootPart
+    
+    local success = pcall(function()
+        humanoidRootPart.CFrame = CFrame.new(position + Vector3.new(0, 5, 0))
+        return true
+    end)
+    
+    return success
+end
+
+local function CompleteRaceWithTeleport()
+    local initialWins = GetCurrentWins()
+    
+    local finishPosition = GetFinishLinePosition()
+    local teleportSuccess = TeleportToPosition(finishPosition)
+    
+    if teleportSuccess then
+        task.wait(0.001)
+        
+        local startPosition = GetStartLinePosition()
+        TeleportToPosition(startPosition)
+        local newWins = GetCurrentWins()
+        local winsGained = newWins - initialWins
+        
+        return true, winsGained
+    else
+        return false, 0
+    end
+end
+
+local function extractEggPrices()
+    if not PetConfig_upvr then
+        warn("PetConfig module not loaded, cannot extract egg data.")
+        return {}
+    end
+    
+    local eggsFolder = Workspace:FindFirstChild("WorldMain")
+    if eggsFolder then
+        eggsFolder = eggsFolder:FindFirstChild("Eggs")
+    end
+    
+    if not eggsFolder then
+        warn("Eggs folder not found: workspace.WorldMain.Eggs. Skipping Egg List.")
+        return {}
+    end
+    
+    local eggData = {}
+    
+    for _, eggModel in ipairs(eggsFolder:GetChildren()) do
+        if eggModel:IsA("Model") and string.find(eggModel.Name, "Draw") then
+            local eggName = eggModel.Name
+            
+            local lotteryData = PetConfig_upvr.Lotterys[eggName]
+            
+            if lotteryData and lotteryData.Price then
+                eggData[eggName] = {
+                    Price = lotteryData.Price,
+                    WorldId = lotteryData.WorldId,
+                    Type = lotteryData.Type,
+                    Model = eggModel 
+                }
+            end
+        end
+    end
+    
+    return eggData
+end
+
+local function GetPetDataById(petId)
+    local petIdStr = tostring(petId)
+    
+    if not PetConfig_upvr then
+        return nil
+    end
+
+    if not PetConfig_upvr.Pets then
+        return nil
+    end
+    
+    if PetConfig_upvr.Pets[petId] then
+        return PetConfig_upvr.Pets[petId] 
+    end
+    
+    for key, data in pairs(PetConfig_upvr.Pets) do
+        if data and data.Id and tostring(data.Id) == petIdStr then
+            return data 
+        end
+    end
+    
+    local paddedId = string.format("%d", petId) 
+    if #paddedId < 3 then 
+        paddedId = string.format("%03d", petId)
+    end
+    
+    if PetConfig_upvr.Pets["Pet" .. petIdStr] then
+        return PetConfig_upvr.Pets["Pet" .. petIdStr]
+    elseif PetConfig_upvr.Pets["Pet" .. paddedId] then
+        return PetConfig_upvr.Pets["Pet" .. paddedId]
+    end
+    
+    return nil
+end
+
+local function GetRarityName(rarityType)
+    if not PetConfig_upvr or not PetConfig_upvr.Rarity then
+        return "Unknown"
+    end
+    
+    if PetConfig_upvr.Rarity[rarityType] and PetConfig_upvr.Rarity[rarityType].en_name then
+        return PetConfig_upvr.Rarity[rarityType].en_name
+    end
+    
+    return "Rarity?"
+end
+
+
+local function FindBestTrainInCurrentWorld()
+    local currentPower = GetCurrentPower()
+    local currentWorld = GetCurrentWorld()
+    local bestTrain = nil
+    local highestPower = 0
+    
+    for trainIndex = 1, 12 do
+        local trainData = GetTrainPowerData(currentWorld, trainIndex)
+        
+        if trainData then
+            if currentPower >= trainData.PowerNeed and trainData.Power > highestPower then
+                highestPower = trainData.Power
+                bestTrain = {
+                    worldId = currentWorld,
+                    trainIndex = trainIndex,
+                    data = trainData
+                }
+            end
+        end
+    end
+    
+    return bestTrain
+end
+
+local function DoAutoTrainUpgrade()
+    local bestTrain = FindBestTrainInCurrentWorld()
+    
+    if bestTrain then
+        local success = UpgradeTrainPower(bestTrain.worldId, bestTrain.trainIndex)
+        return success
+    end
+    
+    return false
+end
+
+local function continuousAutoTrain()
+    while AutoTrainPower do
+        local success = DoAutoTrainUpgrade()
+        if not success then
+            task.wait(0.5)
+        else
+            task.wait(0.001)
+        end
+    end
+end
+
+local function continuousRaceTeleport()
+    while AutoRaceTeleport do
+        if IsRacing() then
+            while IsRacing() and AutoRaceTeleport do
+                local success, winsGained = CompleteRaceWithTeleport()
+                
+                if success then
+                    racesCompleted = racesCompleted + 1
+                    
+                    if winsGained > 0 then
+                        totalWinsGained = totalWinsGained + winsGained
+                    end
+                end
+                
+                task.wait(0.001)
+            end
+        else
+            task.wait(0.01)
+        end
+    end
+end
+
+local function continuousAutoHatch()
+    local reliableEvent = ReplicatedStorage:WaitForChild("Warp"):WaitForChild("Index"):WaitForChild("Event"):WaitForChild("Reliable")
+    
+    while AutoHatchEnabled do
+        if selectedEggDrawName and next(SelectedPetsToHatch) then
+            
+            local petIdsToHatch = {}
+            for petId, enabled in pairs(SelectedPetsToHatch) do
+                if enabled then
+                    table.insert(petIdsToHatch, petId)
+                end
+            end
+
+            if #petIdsToHatch > 0 then
+                local eggName = selectedEggDrawName
+                local petCount = #petIdsToHatch
+                
+                local payload = "\254\3\0"
+                payload = payload .. "\6\6Hatch1" 
+                payload = payload .. "\6" .. string.char(string.len(eggName)) .. eggName 
+                payload = payload .. "\254" .. string.char(petCount) .. "\0" 
+
+                for _, petId in ipairs(petIdsToHatch) do
+                    payload = payload .. "\6" .. string.char(string.len(petId)) .. petId
+                end
+                
+                local success, err = pcall(function()
+                    reliableEvent:FireServer(buffer.fromstring("\3"), buffer.fromstring(payload))
+                end)
+                
+                if not success then
+                    warn("[AutoHatch ERROR] " .. err)
+                end
+            end
+        end
+        task.wait(0.1) 
+    end
+end
+
+function FormatTime(sec)
+    local h = math.floor(sec / 3600)
+    local m = math.floor((sec % 3600) / 60)
+    local s = sec % 60
+    return string.format("%02d:%02d:%02d", h, m, s)
+end
+
+function FormatGameUptime(sec)
+    if sec < 0 then return "Game has not released yet." end
+    
+    local s = sec
+    local y = math.floor(s / 31536000) 
+    s = s % 31536000
+    local m = math.floor(s / 2628000) 
+    s = s % 2628000
+    local d = math.floor(s / 86400)
+    s = s % 86400
+    local h = math.floor(s / 3600)
+    s = s % 3600
+    local min = math.floor(s / 60)
+    s = s % 60
+    
+    local parts = {}
+    if y > 0 then table.insert(parts, y .. "y") end
+    if m > 0 then table.insert(parts, m .. "m") end
+    if d > 0 then table.insert(parts, d .. "d") end
+    if h > 0 then table.insert(parts, h .. "h") end
+    if min > 0 then table.insert(parts, min .. "m") end
+    if s > 0 or #parts == 0 then table.insert(parts, s .. "s") end 
+    
+    return table.concat(parts, " ")
+end
+
+local suffixes = {
+    [1] = "K", [2] = "M", [3] = "B", [4] = "T", [5] = "Qa", [6] = "Qi",
+    [7] = "Sx", [8] = "Sp", [9] = "Oc", [10] = "No", [11] = "Dc",
+}
+
+function FormatNumber(num)
+    if num < 1000 then
+        return tostring(math.floor(num))
+    end
+    
+    local exp = math.floor(math.log10(num) / 3)
+    local suffix = suffixes[exp]
+    
+    if not suffix then
+        suffix = "e" .. (exp * 3)
+    end
+    
+    local val = num / (10^(exp * 3))
+    
+    return string.format("%.1f%s", val, suffix)
+end
+
+local Window = l:CreateWindow({
+    Title = "AN Hub - " .. NAMA_GAME, 
+    Icon = "rbxassetid://109266060342925", 
+    Author = "Aditya Nugraha",
+    Folder = "ANHub/TrainPower",
+    Size = UDim2.fromOffset(500, 600),
+    Transparent = true,
+    Theme = "Dark",
+    Resizable = true,
+    SideBarWidth = 150,
+    BackgroundImageTransparency = 0.8,
+    HideSearchBar = true,
+    ScrollBarEnabled = true,
+    User = {
+        Enabled = true,
+        Anonymous = false,
+        Callback = function()
+        end,
+    },
+})
+
+Window:EditOpenButton({
+    Title = "ANHub - Open", 
+    Icon = "monitor",
+    CornerRadius = UDim.new(0, 6),
+    StrokeThickness = 2,
+    Color = ColorSequence.new(Color3.fromRGB(30, 30, 30), Color3.fromRGB(255, 255, 255)),
+    Draggable = true,
+})
+
+local Main = Window:Tab({Title = "Main", Icon = "house"})
+local EggListTab = Window:Tab({Title = "Egg List", Icon = "egg"})
+Window:Divider()
+local InfoTab = Window:Tab({ Title = "Info", Icon = "info"})
+
+Window:SelectTab(1)
+
+Main:Section({ Title = "Auto Train Power", Icon = "trending-up" })
+
+Main:Toggle({
+    Title = "Auto Train Power",
+    Desc = "Automatically upgrade best train in current world",
+    Default = false,
+    Callback = function(state)
+        AutoTrainPower = state
+        if state then
+            task.spawn(continuousAutoTrain)
+        end
+    end
+})
+
+Main:Section({ Title = "Auto Race Teleport System", Icon = "rocket" })
+
+Main:Toggle({
+    Title = "Auto Race Teleport",
+    Desc = "Continuously teleport Stage18 → Stage01 while Racing Active",
+    Default = false,
+    Callback = function(state)
+        AutoRaceTeleport = state
+        if state then
+            totalWinsGained = 0
+            racesCompleted = 0
+            raceSessionStart = os.time()
+            task.spawn(continuousRaceTeleport)
+        else
+            if IsRacing() then
+                LeaveRace()
+            end
+        end
+    end
+})
+
+Main:Button({
+    Title = "Teleport to Finish Once",
+    Desc = "Teleport to Stage18 → Stage01 one time",
+    Callback = function()
+        CompleteRaceWithTeleport()
+    end
+})
+
+Main:Section({ Title = "Status", Icon = "bar-chart" })
+
+local worldStatusDisplay = Main:Paragraph({
+    Title = "World Status",
+    Desc = "Loading...",
+    Image = "zap",
+    ImageSize = 26
+})
+
+local UpdatePetList
+local RefreshEggList
+local currentPetElements = {} 
+local eggPriceDropdown = nil
+local currentSelectedEggPriceValue = nil 
+
+EggListTab:Section({ Title = "Select Egg", Icon = "list" })
+
+local function GetEggOptions()
+    local allEggData = extractEggPrices()
+    
+    if next(allEggData) == nil then
+        return {}, "No Eggs Found" 
+    end
+    
+    local sortedEggs = {}
+    for name, data in pairs(allEggData) do
+        table.insert(sortedEggs, {name = name, data = data})
+    end
+    table.sort(sortedEggs, function(a, b)
+        return a.data.Price < b.data.Price
+    end)
+    
+    local dropdownOptions = {}
+    for _, eggInfo in ipairs(sortedEggs) do
+        local priceDesc = FormatNumber(eggInfo.data.Price) 
+        table.insert(dropdownOptions, priceDesc)
+    end
+    
+    local uniqueOptions = {}
+    local seen = {}
+    for _, option in ipairs(dropdownOptions) do
+        if not seen[option] then
+            table.insert(uniqueOptions, option)
+            seen[option] = true
+        end
+    end
+    
+    return uniqueOptions, uniqueOptions[1] or "No prices"
+end
+
+local initialOptions, initialDefault = GetEggOptions()
+currentSelectedEggPriceValue = initialDefault 
+
+if #initialOptions == 0 then
+    EggListTab:Paragraph({
+        Title = "No Eggs Found in Workspace",
+        Desc = "Move to a world with eggs to see options.",
+        Image = "alert-triangle",
+        ImageSize = 26
+    })
+end
+
+eggPriceDropdown = EggListTab:Dropdown({
+    Title = "Select Egg Price",
+    Desc = "This list updates automatically when you change worlds.",
+    Values = initialOptions, 
+    Default = initialDefault, 
+    Multi = false,
+    Callback = function(value)
+        SelectedPetsToHatch = {} 
+        UpdatePetList(value)
+    end
+})
+
+EggListTab:Toggle({
+    Title = "Auto Hatch (for Auto-Delete)",
+    Desc = "NOTE: Pets selected in the 'Pet Selection' list are for auto-delete.",
+    Default = false,
+    Callback = function(state)
+        AutoHatchEnabled = state
+        if state then
+            task.spawn(continuousAutoHatch)
+        end
+    end
+})
+
+EggListTab:Section({ Title = "Pet Selection (for Auto-Delete)", Icon = "paw" })
+
+local placeholderParagraph = EggListTab:Paragraph({
+    Title = "No Egg Selected",
+    Desc = "Select an egg price from the dropdown above to see the pet list."
+})
+table.insert(currentPetElements, placeholderParagraph)
+
+UpdatePetList = function(value)
+    if value == nil then
+        return
+    end
+    
+    currentSelectedEggPriceValue = value 
+        
+    for _, element in ipairs(currentPetElements) do
+        if element and element.Destroy then
+            pcall(element.Destroy, element)
+        end
+    end
+    currentPetElements = {} 
+
+    local allEggData = extractEggPrices() 
+    selectedEggPrice = value 
+    selectedEggDrawName = nil
+    local foundEgg = false
+    for name, data in pairs(allEggData) do
+        if FormatNumber(data.Price) == selectedEggPrice then
+            selectedEggDrawName = name
+            foundEgg = true
+            break
+        end
+    end
+    
+    if not foundEgg then
+        selectedEggDrawName = nil 
+    end
+    
+    if foundEgg then
+        local lotteryData = PetConfig_upvr and PetConfig_upvr.Lotterys and PetConfig_upvr.Lotterys[selectedEggDrawName]
+
+        if lotteryData and lotteryData.Probability and PetConfig_upvr and PetConfig_upvr.Pets then
+            if not next(lotteryData.Probability) then
+                local p = EggListTab:Paragraph({ Title = "Info", Desc = "This egg contains no pets." })
+                table.insert(currentPetElements, p) 
+            end
+
+            for i, itemData in ipairs(lotteryData.Probability) do
+                local petId = nil
+                local petName = "Error"
+                local desc = "Error"
+
+                if type(itemData) == "table" and itemData.Id then
+                    petId = itemData.Id 
+                    
+                    local petData = GetPetDataById(petId)
+                    
+                    local rateValue = itemData.Rate or 0
+                    local ratePercent = string.format("%.1f", rateValue / 1000) 
+                    
+                    desc = "Rate: " .. ratePercent .. "%"
+                    
+                    local rarityName = "Rarity?"
+                    if petData and petData.Rarity then
+                        rarityName = GetRarityName(petData.Rarity)
+                    end
+
+                    if petData and petData.PetName then
+                        petName = petData.PetName .. " (" .. rarityName .. ")"
+                    else
+                        petName = "Error: ID " .. tostring(petId) .. " (" .. rarityName .. ")"
+                    end
+                else
+                    continue 
+                end
+                
+                local success, newToggle = pcall(function()
+                    return EggListTab:Toggle({
+                        Title = petName, 
+                        Desc = desc, 
+                        Default = false,
+                        Callback = function(state)
+                            SelectedPetsToHatch[petId] = state 
+                        end
+                    })
+                end)
+                
+                if success and newToggle then
+                    table.insert(currentPetElements, newToggle) 
+                else
+                     warn("[UI ERROR] FAILED to create :Toggle: " .. tostring(newToggle)) 
+                end
+            end
+        else
+            local p = EggListTab:Paragraph({ Title = "Lottery Data Error", Desc = "Pet probability data not found." })
+            table.insert(currentPetElements, p)
+        end
+    else
+        local p = EggListTab:Paragraph({ Title = "Error", Desc = "Egg data for price " .. tostring(value) .. " not found."})
+        table.insert(currentPetElements, p)
+    end
+end
+
+RefreshEggList = function()
+    if not eggPriceDropdown then 
+        return 
+    end
+    
+    local newOptions, newDefault = GetEggOptions()
+    
+    pcall(eggPriceDropdown.Refresh, eggPriceDropdown, newOptions)
+    
+    local currentSelection = currentSelectedEggPriceValue 
+    
+    local selectionStillExists = false
+    for _, opt in ipairs(newOptions) do
+        if opt == currentSelection then
+            selectionStillExists = true
+            break
+        end
+    end
+    
+    if not selectionStillExists then
+        SelectedPetsToHatch = {} 
+        pcall(eggPriceDropdown.Select, eggPriceDropdown, newDefault)
+        UpdatePetList(newDefault)
+    end
+end
+
+if initialDefault ~= "No prices" then
+    UpdatePetList(initialDefault)
+end
+
+local Info = InfoTab
+
+local ui = l
+local InviteCode = "cy6uMRmeZ"
+local DiscordAPI = "https://discord.com/api/v10/invites/" .. InviteCode .. "?with_counts=true&with_expiration=true"
+local function LoadDiscordInfo()
+    local success, result = pcall(function()
+        return game:GetService("HttpService"):JSONDecode(ui.Creator.Request({
+            Url = DiscordAPI,
+            Method = "GET",
+            Headers = {
+                ["User-Agent"] = "RobloxBot/1.0",
+                ["Accept"] = "application/json"
+            }
+        }).Body)
+    end)
+
+    if success and result and result.guild then
+        local DiscordInfo = Info:Paragraph({
+            Title = result.guild.name,
+            Desc = 'Members: ' .. tostring(result.approximate_member_count) ..
+                '\nOnline: ' .. tostring(result.approximate_presence_count),
+            Image = "rbxassetid://109266060342925",
+            ImageSize = 42,
+        })
+
+        Info:Button({
+            Title = "Copy Discord Invite",
+            Callback = function()
+                setclipboard("https://discord.gg/" .. InviteCode)
+            end
+        })
+    end
+end
+
+LoadDiscordInfo()
+
+local timeDisplay = Info:Paragraph({
+    Title = "ANHub Uptime", 
+    Desc = "Loading...",
+    Image = "clock",
+    ImageSize = 26
+})
+
+task.spawn(function()
+    while true do
+        local uptime = os.time() - gameReleaseTimestamp 
+        timeDisplay:SetDesc(FormatGameUptime(uptime))
+        task.wait(1) 
+    end
+end)
+
+task.spawn(function()
+    local previousWorldForCheck = GetCurrentWorld() 
+    
+    while true do
+        local currentWorld = GetCurrentWorld() 
+        
+        if currentWorld ~= previousWorldForCheck then
+            if RefreshEggList then 
+                RefreshEggList() 
+            end
+            previousWorldForCheck = currentWorld 
+        end
+        
+        local worldName = GetWorldName(currentWorld)
+        local currentPower = GetCurrentPower()
+        local currentWins = GetCurrentWins()
+        local bestTrain = FindBestTrainInCurrentWorld()
+        local isRacing = IsRacing()
+        
+        local statusText = "World: " .. worldName .. "\n"
+        statusText = statusText .. "Power: " .. FormatNumber(currentPower) .. "\n"
+        statusText = statusText .. "Wins: " .. FormatNumber(currentWins) .. "\n"
+        statusText = statusText .. "Racing Active: " .. (isRacing and "YES" or "NO") .. "\n"
+        statusText = statusText .. "Auto Teleport: " .. (AutoRaceTeleport and "ON" or "OFF") .. "\n"
+        statusText = statusText .. "Races Completed: " .. racesCompleted .. "\n"
+        statusText = statusText .. "Wins Gained: " .. FormatNumber(totalWinsGained)
+        
+        if bestTrain then
+            statusText = statusText .. "\nBest Train: " .. bestTrain.trainIndex
+            statusText = statusText .. " (+" .. bestTrain.data.Power .. ")"
+        else
+            statusText = statusText .. "\nNo affordable trains"
+        end
+        
+        if AutoRaceTeleport then
+            local sessionTime = os.time() - raceSessionStart
+            local wps = racesCompleted > 0 and totalWinsGained / (os.time() - raceSessionStart) or 0
+            
+            statusText = statusText .. "\nSession: " .. FormatTime(sessionTime)
+            statusText = statusText .. "\nWins/Sec: " .. string.format("%.2f", wps)
+        end
+        
+        worldStatusDisplay:SetDesc(statusText)
+        
+        task.wait(2)
+    end
+end)
