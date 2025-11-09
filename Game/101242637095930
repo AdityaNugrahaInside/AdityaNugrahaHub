@@ -1,0 +1,543 @@
+-- Pet Legend: Infinity Clicker X
+-- === PENGATURAN JUDUL & TANGGAL RILIS ===
+
+-- Deteksi nama game otomatis (dari MarketplaceService)
+local function GetGameName()
+	local success, result = pcall(function()
+		return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
+	end)
+	return success and result or "Roblox Game"
+end
+
+local NAMA_GAME = GetGameName()
+
+-- GANTI TANGGAL DI BAWAH INI DENGAN TANGGAL RILIS GAME-NYA
+local TAHUN_RILIS = 2025
+local BULAN_RILIS = 10
+local TANGGAL_RILIS = 7
+-- =========================================
+
+-- game load & fps unlocker
+
+repeat task.wait() until game:IsLoaded()
+
+if setfpscap then
+	setfpscap(1000000)
+else
+	warn("Your exploit does not support setfpscap.")
+end
+
+-- library
+local l = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+-- services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+
+-- Menggunakan timestamp rilis game
+local gameReleaseTimestamp = os.time({
+	year = TAHUN_RILIS, 
+	month = BULAN_RILIS, 
+	day = TANGGAL_RILIS, 
+	hour = 0, 
+	min = 0, 
+	sec = 0
+})
+
+-- Path ke folder AutoDelete
+local AutoDeleteFolder = nil
+local ad_success, ad_result = pcall(function()
+	return LocalPlayer:WaitForChild("PlayerData"):WaitForChild("AutoDelete")
+end)
+if ad_success then
+	AutoDeleteFolder = ad_result
+else
+	warn("Gagal menemukan folder PlayerData.AutoDelete: " .. tostring(ad_result))
+end
+
+-- RemoteFunction untuk Rebirth
+local RebirthFunction = nil
+local rb_func_success, rb_func_result = pcall(function()
+	return ReplicatedStorage:WaitForChild("RemoteFunctions"):WaitForChild("Rebirth")
+end)
+if not rb_func_success then
+	warn("Gagal menemukan RemoteFunction 'Rebirth': " .. tostring(rb_func_result))
+end
+RebirthFunction = rb_func_result
+
+-- BARU: RemoteEvent untuk Tap
+local TapEvent = nil
+local tap_success, tap_result = pcall(function()
+	return ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("Tap")
+end)
+if not tap_success then
+	warn("Gagal menemukan RemoteEvent 'Tap': " .. tostring(tap_result))
+end
+TapEvent = tap_result
+
+-- Variabel status
+local isAutoRebirthEnabled = false
+local isAutoClickEnabled = false -- BARU
+local currentSelectedRebirth = nil 
+
+-- Tabel untuk menyimpan data asli
+local originalPercentages = {}
+
+-- Memuat Modul Telur dari EggUtil
+local EggData = nil
+local success, result = pcall(function()
+	return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utilities"):WaitForChild("EggUtil"))
+end)
+
+if not success then
+	warn("Gagal memuat EggUtil: " .. tostring(result))
+else
+	EggData = result 
+	
+	-- Modifikasi data modul
+	print("Memulai modifikasi EggUtil...")
+	local modifiedCurrencyCount = 0
+	local modifiedRarityCount = 0 
+	local modifiedVisibilityCount = 0 
+
+	local pcall_success, pcall_err = pcall(function()
+		for _, eggData in ipairs(EggData) do
+			if eggData.Currency == "Robux" then
+				eggData.Currency = "Clicks"
+				eggData.ProductId = nil
+				modifiedCurrencyCount = modifiedCurrencyCount + 1
+			end
+			
+			if eggData.Pets then
+				for _, petData in ipairs(eggData.Pets) do
+					if not originalPercentages[petData.Name] then
+						originalPercentages[petData.Name] = petData.Percentage
+					end
+					
+					if petData.Rarity == "Secret" then
+						petData.Percentage = 100
+						petData.VisibleInEgg = true 
+						modifiedRarityCount = modifiedRarityCount + 1
+						if petData.VisibleInEgg then modifiedVisibilityCount = modifiedVisibilityCount + 1 end
+					end
+				end
+			end
+		end
+	end)
+
+	if pcall_success then
+		print("Modifikasi EggUtil Selesai.")
+	else
+		warn("Gagal memodifikasi EggUtil: " .. tostring(pcall_err))
+	end
+end
+
+-- Memuat Modul Rebirth
+local RebirthUtil = nil
+local rebirth_success, rebirth_result = pcall(function()
+	return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utilities"):WaitForChild("RebirthUtil"))
+end)
+if not rebirth_success then
+	warn("Gagal memuat RebirthUtil: " .. tostring(rebirth_result))
+end
+RebirthUtil = rebirth_result
+
+
+---
+-- FUNCTION UTILITY
+---
+
+function FormatGameUptime(sec)
+	if sec < 0 then return "Game has not released yet." end
+	local s = sec
+	local y = math.floor(s / 31536000); s = s % 31536000
+	local m = math.floor(s / 2628000); s = s % 2628000
+	local d = math.floor(s / 86400); s = s % 86400
+	local h = math.floor(s / 3600); s = s % 3600
+	local min = math.floor(s / 60); s = s % 60
+	local parts = {}
+	if y > 0 then table.insert(parts, y .. "y") end
+	if m > 0 then table.insert(parts, m .. "m") end
+	if d > 0 then table.insert(parts, d .. "d") end
+	if h > 0 then table.insert(parts, h .. "h") end
+	if min > 0 then table.insert(parts, min .. "m") end
+	if s > 0 or #parts == 0 then table.insert(parts, s .. "s") end 
+	return table.concat(parts, " ")
+end
+
+local suffixes = {
+	"K", "M", "B", "T", "Qd", "Qn", "Sx", "Sp", "Oc", "No", "Dc",
+	"Ud", "Dd", "Td", "Qdd", "Qnd", "Sxd", "Spd", "Ocd", "Nod",
+	"Vg", "Uvg", "Dvg", "Tvg", "Qdvg", "Qnvg", "Sxvg", "Spvg", "Ocvg", "Novg",
+	"Tg", "Utg", "Dtg", "Ttg", "Qdtg", "Qntg", "Sxtg", "Sptg", "Octg", "Notg",
+	"Qdg", "Uqag", "Dqag", "Tqag", "Qdqag", "Qnqag", "Sxqag", "Spqag", "Ocqag", "Noqag"
+}
+local function FormatNumber(num)
+	if num < 1000 then
+		return tostring(math.floor(num))
+	end
+	local exp = math.floor(math.log10(num) / 3)
+	local suffix = suffixes[exp]
+	if not suffix then
+		return string.format("%.1e", num)
+	end
+	local val = num / (10^(exp * 3))
+	return string.format("%.2f%s", val, suffix)
+end
+
+-- Fungsi internal untuk teleport
+local function teleportTo(destinationPart)
+	local character = LocalPlayer.Character
+	if not character then 
+		warn("Teleport GAGAL: Karakter tidak ditemukan.")
+		return 
+	end
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if not rootPart then 
+		warn("Teleport GAGAL: HumanoidRootPart tidak ditemukan.")
+		return 
+	end
+	
+	rootPart.CFrame = destinationPart.CFrame + Vector3.new(0, 3, 0)
+end
+
+
+local Window = l:CreateWindow({
+	Title = "AN Hub - " .. NAMA_GAME, 
+	Icon = "rbxassetid://109266060342925", 
+	Author = "Aditya Nugraha",
+	Folder = "ANHub/TrainPower",
+	Size = UDim2.fromOffset(500, 600),
+	Transparent = true,
+	Theme = "Dark",
+	Resizable = true,
+	SideBarWidth = 150,
+	BackgroundImageTransparency = 0.8,
+	HideSearchBar = true,
+	ScrollBarEnabled = true,
+	User = {
+		Enabled = true,
+		Anonymous = false,
+		Callback = function()
+		end,
+	},
+})
+
+Window:EditOpenButton({
+	Title = "ANHub - Open", 
+	Icon = "monitor",
+	CornerRadius = UDim.new(0, 6),
+	StrokeThickness = 2,
+	Color = ColorSequence.new(Color3.fromRGB(30, 30, 30), Color3.fromRGB(255, 255, 255)),
+	Draggable = true,
+})
+
+local MainTab = Window:Tab({Title = "Main", Icon = "egg"})
+Window:Divider()
+local InfoTab = Window:Tab({ Title = "Info", Icon = "info"})
+
+Window:SelectTab(1)
+
+-- =========================================
+-- BAGIAN MAIN TAB (DIUBAH)
+-- =========================================
+local Main = MainTab
+
+-- -----------------------------------------
+-- BARU: Section Auto Click
+-- -----------------------------------------
+Main:Section({ Title = "Auto Click", Icon = "mouse-pointer" })
+Main:Toggle({
+	Title = "Auto Click",
+	Desc = "Otomatis mengirim event Tap ke server.",
+	Default = false,
+	Callback = function(state)
+		isAutoClickEnabled = state
+		if state and TapEvent then
+			task.spawn(function()
+				print("Auto Click: ON")
+				while isAutoClickEnabled do
+					TapEvent:FireServer()
+					task.wait() -- Secepat mungkin
+				end
+				print("Auto Click: OFF")
+			end)
+		end
+	end
+})
+
+
+-- -----------------------------------------
+-- Section Rebirth
+-- -----------------------------------------
+Main:Section({ Title = "Auto Rebirth", Icon = "refresh-cw" })
+
+local rebirthDropdownMapping = {}
+local defaultRebirthChoice = nil
+
+if not RebirthUtil or not RebirthUtil.List then
+	Main:Paragraph({
+		Title = "Error",
+		Desc = "Tidak dapat memuat modul 'RebirthUtil'.",
+		Image = "alert-triangle"
+	})
+else
+	local rebirthDropdownOptions = {}
+	
+	table.sort(RebirthUtil.List, function(a, b)
+		return (a.Order or 0) < (b.Order or 0)
+	end)
+	
+	for _, data in ipairs(RebirthUtil.List) do
+		local desc = data.Desc
+		
+		-- DIUBAH: Hanya tampilkan nama (Desc)
+		local displayName = desc
+		
+		table.insert(rebirthDropdownOptions, displayName)
+		rebirthDropdownMapping[displayName] = data.Desc -- Simpan "1M Rebirths"
+	end
+	
+	defaultRebirthChoice = rebirthDropdownOptions[1]
+	currentSelectedRebirth = rebirthDropdownMapping[defaultRebirthChoice]
+	
+	Main:Dropdown({
+		Title = "Rebirth List",
+		Desc = "Pilih jumlah rebirth untuk auto.",
+		Values = rebirthDropdownOptions,
+		Default = defaultRebirthChoice,
+		Multi = false,
+		Callback = function(selectedDisplayName)
+			currentSelectedRebirth = rebirthDropdownMapping[selectedDisplayName]
+		end
+	})
+	
+	Main:Toggle({
+		Title = "Auto Rebirth (Selected)",
+		Desc = "Akan otomatis rebirth menggunakan item terpilih.",
+		Default = false,
+		Callback = function(state)
+			isAutoRebirthEnabled = state
+			
+			if state and RebirthFunction then
+				task.spawn(function()
+					print("Auto Rebirth: ON")
+					while isAutoRebirthEnabled do
+						if not currentSelectedRebirth then
+							warn("Auto Rebirth: Tidak ada rebirth dipilih.")
+							task.wait(1.0)
+						else
+							local success, result = pcall(function()
+								return RebirthFunction:InvokeServer(currentSelectedRebirth)
+							end)
+							
+							if not success then
+								warn("Auto Rebirth GAGAL (InvokeServer error):", result)
+								isAutoRebirthEnabled = false
+								break
+							end
+						end
+						task.wait(1.0) -- Jeda aman untuk InvokeServer
+					end
+					print("Auto Rebirth: OFF")
+				end)
+			end
+		end
+	})
+end
+
+
+-- -----------------------------------------
+-- Section Egg List
+-- -----------------------------------------
+Main:Section({ Title = "Egg Pet List", Icon = "list" })
+
+local currentPetElements = {}
+local eggNameMapping = {}
+
+local function clearPetList()
+	for _, element in ipairs(currentPetElements) do
+		if element and element.Destroy then
+			pcall(element.Destroy, element)
+		end
+	end
+	currentPetElements = {}
+end
+
+if not EggData then
+	Main:Paragraph({
+		Title = "Error",
+		Desc = "Tidak dapat memuat modul 'EggUtil' dari ReplicatedStorage.Shared.Utilities.",
+		Image = "alert-triangle"
+	})
+	return
+end
+
+-- Fungsi untuk menampilkan pet dari telur yang dipilih
+local function showPetsForEgg(eggName)
+	clearPetList()
+	
+	local selectedEggData = nil
+	for _, data in ipairs(EggData) do
+		if data.Name == eggName then
+			selectedEggData = data
+			break
+		end
+	end
+	
+	if not selectedEggData or not selectedEggData.Pets then
+		warn("Data telur tidak ditemukan atau tidak memiliki pet untuk:", eggName)
+		local p = Main:Paragraph({ Title = "Info", Desc = "Telur ini tidak memiliki data pet." })
+		table.insert(currentPetElements, p)
+		return
+	end
+
+	local petsInEgg = selectedEggData.Pets
+	
+	table.sort(petsInEgg, function(a, b)
+		return (a.ClickMultiplier or 0) > (b.ClickMultiplier or 0)
+	end)
+	
+	for _, pet in ipairs(petsInEgg) do
+		local petName = pet.Name or "Unknown"
+		local petRarity = pet.Rarity or "Unknown"
+		local petClickMulti = pet.ClickMultiplier or "N/A"
+		local petPercentage = pet.Percentage or 0
+		
+		local desc = string.format("Rarity: %s (%s%%)\nClick Multi: %s", petRarity, tostring(petPercentage), tostring(petClickMulti))
+		
+		local p = Main:Paragraph({
+			Title = petName,
+			Desc = desc
+		})
+		table.insert(currentPetElements, p)
+	end
+end
+
+-- Kumpulkan nama telur untuk dropdown
+local eggDropdownOptions = {}
+local eggDropdownMapping = {}
+local defaultDropdownChoice = nil
+
+if EggData then
+	for _, eggData in ipairs(EggData) do
+		local eggName = eggData.Name
+		local price = "N/A"
+		local currency = ""
+		
+		if eggData.Price then
+			price = FormatNumber(eggData.Price)
+			currency = " " .. (eggData.Currency or "Clicks")
+		elseif eggData.RobuxPrice then
+			price = tostring(eggData.RobuxPrice)
+			currency = " Robux"
+		end
+		
+		local displayName = string.format("%s (%s%s)", eggName, price, currency)
+		
+		table.insert(eggDropdownOptions, displayName)
+		eggDropdownMapping[displayName] = eggName
+	end
+	
+	defaultDropdownChoice = eggDropdownOptions[1]
+end
+
+-- Buat Dropdown
+Main:Dropdown({
+	Title = "Select Egg",
+	Desc = "Pilih telur untuk melihat isinya dan teleport.",
+	Values = eggDropdownOptions,
+	Default = defaultDropdownChoice,
+	Multi = false,
+	Callback = function(selectedDisplayName)
+		local actualEggName = eggDropdownMapping[selectedDisplayName]
+		if actualEggName then
+			-- 1. Tampilkan info pet
+			showPetsForEgg(actualEggName)
+			
+			-- 2. Teleport
+			local success, err = pcall(function()
+				local eggModel = Workspace:WaitForChild("Eggs"):FindFirstChild(actualEggName)
+				if eggModel then
+					local tpTarget = eggModel:FindFirstChild("EggListener")
+					if tpTarget then
+						teleportTo(tpTarget)
+						print("Berhasil teleport ke: " .. actualEggName)
+					else
+						warn("Teleport GAGAL: Tidak menemukan 'EggListener' di " .. actualEggName)
+					end
+				else
+					warn("Teleport GAGAL: Tidak menemukan model telur di Workspace: " .. actualEggName)
+				end
+			end)
+			if not success then
+				warn("Error Teleport: " .. tostring(err))
+			end
+		end
+	end
+})
+
+-- Tambahkan placeholder
+local placeholder = Main:Paragraph({
+	Title = "Pilih Telur",
+	Desc = "Pilih telur dari dropdown di atas untuk melihat info pet dan teleport."
+})
+table.insert(currentPetElements, placeholder)
+
+
+-- =========================================
+-- BAGIAN INFO TAB (DARI SEBELUMNYA)
+-- =========================================
+local Info = InfoTab
+
+local ui = l
+local InviteCode = "cy6uMRmeZ"
+local DiscordAPI = "https.discord.com/api/v10/invites/" .. InviteCode .. "?with_counts=true&with_expiration=true"
+local function LoadDiscordInfo()
+	local success, result = pcall(function()
+		return game:GetService("HttpService"):JSONDecode(ui.Creator.Request({
+			Url = DiscordAPI,
+			Method = "GET",
+			Headers = {
+				["User-Agent"] = "RobloxBot/1.0",
+				["Accept"] = "application/json"
+			}
+		}).Body)
+	end)
+
+	if success and result and result.guild then
+		local DiscordInfo = Info:Paragraph({
+			Title = result.guild.name,
+			Desc = 'Members: ' .. tostring(result.approximate_member_count) ..
+				'\nOnline: ' .. tostring(result.approximate_presence_count),
+			Image = "rbxassetid://109266060342925",
+			ImageSize = 42,
+		})
+
+		Info:Button({
+			Title = "Copy Discord Invite",
+			Callback = function()
+				setclipboard("https://discord.gg/" .. InviteCode)
+			end
+		})
+	end
+end
+
+LoadDiscordInfo()
+
+local timeDisplay = Info:Paragraph({
+	Title = "ANHub Uptime", 
+	Desc = "Loading...",
+	Image = "clock",
+	ImageSize = 26
+})
+
+task.spawn(function()
+	while true do
+		local uptime = os.time() - gameReleaseTimestamp 
+		timeDisplay:SetDesc(FormatGameUptime(uptime))
+		task.wait(1) 
+	end
+end)
