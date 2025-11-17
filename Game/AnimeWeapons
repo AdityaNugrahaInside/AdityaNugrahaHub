@@ -1,0 +1,454 @@
+-- ============================================================================
+-- [SISTEM KEAMANAN: ULTIMATE WIPE (24 HOURS EDITION)]
+-- Dijalankan PALING PERTAMA sebelum Library dimuat
+-- ============================================================================
+
+local FolderPath = "ANHub/AnimeWeapons" 
+local ExpiryFile = "ANHub_Key_Timer.txt" -- Nama file timer
+
+local function SecureWipe()
+	if not isfile or not delfile or not readfile or not listfiles then return end
+	
+	local currentTime = os.time()
+	local isExpired = false
+	
+	-- 1. CEK STATUS TIMER
+	if isfile(ExpiryFile) then
+		local savedTime = tonumber(readfile(ExpiryFile)) or 0
+		if currentTime > savedTime then
+			isExpired = true
+			print("[AN Hub] SECURITY: Key 24 Jam Habis! Resetting...")
+		end
+	else
+		-- Jika folder ada tapi timer tidak ada, anggap expired (Security breach)
+		if isfolder("WindUI/" .. FolderPath) then
+			isExpired = true
+		end
+	end
+
+	-- 2. EKSEKUSI PEMBERSIHAN (Jika Expired)
+	if isExpired then
+		if isfile(ExpiryFile) then delfile(ExpiryFile) end
+		
+		local targetFolder = "WindUI/" .. FolderPath
+		
+		-- Daftar path kemungkinan file tersimpan
+		local PossiblePaths = {
+			"ANHub/AnimeWeapons",
+			"WindUI/ANHub/AnimeWeapons",
+			"WindUI/Configs",
+			"ANHub"
+		}
+		
+		local UserId = tostring(game.Players.LocalPlayer.UserId)
+		
+		for _, path in pairs(PossiblePaths) do
+			if isfolder(path) then
+				for _, file in pairs(listfiles(path)) do
+					if string.find(file, ".key") or string.find(file, ".json") or string.find(file, UserId) then
+						pcall(function() writefile(file, "EXPIRED_TRASH_DATA") end) -- Corrupt
+						pcall(function() delfile(file) end) -- Delete
+					end
+				end
+			end
+		end
+		
+		-- Tunggu sistem file refresh
+		task.wait(1.5) 
+	end
+end
+
+SecureWipe()
+
+-- ============================================================================
+-- [GAME SCRIPT & UI]
+-- ============================================================================
+
+local function GetGameName()
+	local success, result = pcall(function()
+		return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
+	end)
+	return success and result or "Anime Weapons Dungeon"
+end
+
+local NAMA_GAME = GetGameName()
+repeat task.wait() until game:IsLoaded()
+
+-- [SERVICES]
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ReplicatedFirst = game:GetService("ReplicatedFirst") 
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+
+-- [VARIABLES]
+local hrp, humanoid
+local attackRangePart, attackRange
+local distance = 400
+local targetRoom = 50
+
+-- [CONFIG]
+local Config = {
+	AutoFarm = false,
+	AutoDungeon = false,
+	AutoFuse = false,
+	AutoRankUp = false,
+	TargetEnemies = {}, 
+	TargetDungeon = {}, 
+}
+
+-- [DATA]
+local dungeonList = {"Easy", "Medium", "Hard"}
+local dungeonData = {["Easy"]={id=1,time=0},["Medium"]={id=2,time=20},["Hard"]={id=3,time=40}}
+
+-- [HELPER]
+local function FormatNumber(n)
+	if not n then return "0" end
+	n = tonumber(n)
+	if not n then return "0" end
+	local suffixes = {"k", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc", "Ud", "Dd", "Td", "Qad"}
+	local i = 0
+	while n >= 1000 and i < #suffixes do
+		n = n / 1000
+		i = i + 1
+	end
+	return i == 0 and tostring(n) or string.format("%.2f%s", n, suffixes[i])
+end
+
+-- [BACKEND FUNCTIONS]
+local function GetCurrentZoneEnemies()
+	local list = {}
+	local ZonesFolder = Workspace:FindFirstChild("Zones")
+	local currentMapName = nil
+	if ZonesFolder then
+		local mapFolder = ZonesFolder:GetChildren()[1]
+		if mapFolder then currentMapName = mapFolder.Name end
+	end
+	if currentMapName then
+		local enemiesConfigPath = ReplicatedStorage:FindFirstChild("Scripts") and ReplicatedStorage.Scripts:FindFirstChild("Configs") and ReplicatedStorage.Scripts.Configs:FindFirstChild("Multiple Zones") and ReplicatedStorage.Scripts.Configs["Multiple Zones"]:FindFirstChild("Enemies") and ReplicatedStorage.Scripts.Configs["Multiple Zones"].Enemies:FindFirstChild(currentMapName)
+		if enemiesConfigPath then
+			local success, data = pcall(require, enemiesConfigPath)
+			if success and type(data) == "table" then
+				for internalKey, stats in pairs(data) do
+					local displayName = stats.Display or internalKey
+					local difficulty = stats.Difficult or "Unknown"
+					local titleText = string.format("%s (%s)", displayName, difficulty)
+					local hpRaw = stats.MaxHealth or 0
+					table.insert(list, {Title = titleText, Value = internalKey, Desc = "HP: " .. FormatNumber(hpRaw), HP = hpRaw})
+				end
+				table.sort(list, function(a, b) return (a.HP or 0) < (b.HP or 0) end)
+			end
+		end
+	end
+	return list
+end
+
+local function GetAvatarsWithStats()
+	local list = {}
+	local zoneOrders = {}
+	local zonesConfigPath = ReplicatedStorage:FindFirstChild("Scripts") and ReplicatedStorage.Scripts.Configs:FindFirstChild("Zones")
+	if zonesConfigPath then
+		local s, r = pcall(require, zonesConfigPath)
+		if s and type(r) == "table" then for k, d in pairs(r) do zoneOrders[k] = d.Order or 999 end end
+	end
+	local machineStats = {}
+	local machinePath = ReplicatedStorage.Scripts.Configs.Machines:FindFirstChild("Avatar")
+	if machinePath then
+		local s, r = pcall(require, machinePath)
+		if s and type(r) == "table" then machineStats = r end
+	end
+	local zonesPath = ReplicatedStorage.Scripts.Configs["Multiple Zones"].Enemies
+	if zonesPath then
+		for _, module in pairs(zonesPath:GetChildren()) do
+			if module:IsA("ModuleScript") then
+				local zoneName = module.Name
+				local zoneOrder = zoneOrders[zoneName] or 999 
+				local success, data = pcall(require, module)
+				if success and type(data) == "table" then
+					for internalKey, stats in pairs(data) do
+						local mStat = machineStats[internalKey]
+						local descParts = {}
+						if mStat then
+							if mStat.Mastery then table.insert(descParts, "Mastery: " .. mStat.Mastery .. "%") end
+							if mStat.Damage then table.insert(descParts, "Damage: " .. mStat.Damage .. "%") end
+						end
+						local finalDesc = (#descParts > 0) and table.concat(descParts, " || ") or "No Stats"
+						table.insert(list, {Title = stats.Display or internalKey, Value = internalKey, Desc = finalDesc, _ZoneOrder = zoneOrder, _HP = stats.MaxHealth or 0})
+					end
+				end
+			end
+		end
+		table.sort(list, function(a, b) if a._ZoneOrder ~= b._ZoneOrder then return a._ZoneOrder < b._ZoneOrder else return a._HP < b._HP end end)
+	end
+	return list
+end
+
+local function GetHRP() return LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") or nil end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+	hrp = char:WaitForChild("HumanoidRootPart")
+	humanoid = char:WaitForChild("Humanoid")
+	pcall(function() attackRangePart = Workspace:WaitForChild("AttackRange", 5).Part; if attackRangePart then attackRange = attackRangePart.Size.X/2 end end)
+end)
+
+pcall(function()
+	if LocalPlayer.Character then hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart"); humanoid = LocalPlayer.Character:FindFirstChild("Humanoid") end
+	attackRangePart = Workspace:WaitForChild("AttackRange", 5) and Workspace.AttackRange.Part
+	if attackRangePart then attackRange = attackRangePart.Size.X/2 end
+end)
+
+task.spawn(function()
+	while true do
+		local args = {"Settings", {"AutoAttack", true}}
+		pcall(function() ReplicatedStorage.Reply.Reliable:FireServer(unpack(args)) end)
+		task.wait(1)
+	end
+end)
+
+local function getDistance(obj1, obj2)
+	local pos1 = (obj1:IsA("Model") and obj1:GetPivot().Position) or (obj1:IsA("BasePart") and obj1.Position)
+	local pos2 = (obj2:IsA("Model") and obj2:GetPivot().Position) or (obj2:IsA("BasePart") and obj2.Position)
+	return (pos1 and pos2) and (pos1 - pos2).Magnitude or 99999
+end
+
+local function kill(monster)
+	if not hrp or not monster or not monster:FindFirstChild("Head") then return end
+	local head = monster.Head
+	local hrpToFeet = (hrp.Size.Y / 2) + (humanoid and humanoid.HipHeight or 2)
+	local targetPos = head.Position + Vector3.new(5, hrpToFeet, 5)
+	local alive = true
+	local connection
+	connection = monster.ChildRemoved:Connect(function(child) if child.Name == "Head" or child.Name == "Humanoid" then alive = false; if connection then connection:Disconnect() end end end)
+	while Config.AutoFarm and alive and monster.Parent do
+		if head.Transparency ~= 0 then break end
+		hrp.CFrame = CFrame.new(targetPos)
+		if attackRangePart and getDistance(attackRangePart, monster) > distance then break end
+		targetPos = head.Position + Vector3.new(5, hrpToFeet, 5)
+		task.wait()
+	end
+	if connection then connection:Disconnect() end
+end
+
+local function LogicAutoFarm()
+	while Config.AutoFarm do
+		local enemiesFolder = Workspace:FindFirstChild("Enemies")
+		if enemiesFolder then
+			for _, monster in pairs(enemiesFolder:GetChildren()) do
+				if not Config.AutoFarm then break end
+				if monster:FindFirstChild("Head") and monster.Head.Transparency == 0 then
+					local isTarget = false
+					for _, targetID in pairs(Config.TargetEnemies) do if monster.Name == targetID then isTarget = true; break end end
+					if isTarget then kill(monster) end
+				end
+			end
+		end
+		task.wait()
+	end
+end
+
+local function joinDungeon()
+	local zones = Workspace:FindFirstChild("Zones")
+	local location = zones and zones:GetChildren()[1] and zones:GetChildren()[1].Name or ""
+	if string.find(location, "Dungeon:") or string.find(location, "Raid") then
+		local enemies = Workspace:FindFirstChild("Enemies")
+		if enemies then
+			for _, m in pairs(enemies:GetChildren()) do
+				if not Config.AutoDungeon then break end
+				if m:FindFirstChild("Head") and m.Head.Transparency == 0 then kill(m) end
+			end
+		end
+	else
+		local currentTime = os.date("*t")
+		local target = nil
+		for _, dName in pairs(Config.TargetDungeon) do local dInfo = dungeonData[dName]; if dInfo and dInfo.time == currentTime.min then target = dInfo.id; break end end
+		if target then pcall(function() ReplicatedStorage.Reply.Reliable:FireServer("Join Gamemode", {"Dungeon:" .. tostring(target)}) end); task.wait(2) end
+	end
+end
+
+local function LogicAutoDungeon() while Config.AutoDungeon do joinDungeon(); task.wait(1) end end
+local function LogicAutoFuse() while Config.AutoFuse do pcall(function() ReplicatedStorage.Reply.Reliable:FireServer("Weapon Fuse All") end); task.wait(5) end end
+local function LogicRankUp() while Config.AutoRankUp do pcall(function() ReplicatedStorage.Reply.Reliable:FireServer("RankUp") end); task.wait(5) end end
+
+-- [ONLINE KEY]
+local function GetOnlineKeys()
+	local keys = {}
+	local url = "https://raw.githubusercontent.com/AdityaNugrahaInside/ANHub/refs/heads/main/Key"
+	local success, response = pcall(function() return game:HttpGet(url) end)
+	if success then
+		for line in response:gmatch("[^\r\n]+") do local cleanKey = string.gsub(line, "^%s*(.-)%s*$", "%1"); if cleanKey ~= "" then table.insert(keys, cleanKey) end end
+	else
+		keys = {"Keynya", "OtherKey"}
+	end
+	return keys
+end
+local ValidKeys = GetOnlineKeys()
+
+-- [UI SETUP]
+local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/refs/heads/main/dist/main.lua"))()
+local Window = l:CreateWindow({
+	Title = "AN Hub - " .. NAMA_GAME,
+	Icon = "rbxassetid://109266060342925",
+	Author = "Aditya Nugraha",
+	Folder = FolderPath, 
+	Size = UDim2.fromOffset(580, 460),
+	Acrylic = true,
+	Theme = "Dark",
+	Resizable = true,
+	SideBarWidth = 160,
+	HideSearchBar = true,
+	
+	-- [KEY SYSTEM: 24 HOURS]
+	KeySystem = {
+		Enabled = true,
+		Title = "ANHub", -- [REQUESTED CHANGE]
+		Description = "Key expires every 24 Hours!",
+		Key = ValidKeys,
+		URL = "https://discord.gg/kn9MFKgWWX",
+		Note = "Get Keys on Discord", -- [REQUESTED CHANGE]
+		SaveKey = true, 
+	}
+})
+
+-- Jika sukses login, Set Timer 24 Jam
+if not isfile(ExpiryFile) then
+	local expireTime = os.time() + 86400 -- [REQUESTED CHANGE: 86400 Detik = 24 Jam]
+	writefile(ExpiryFile, tostring(expireTime))
+	print("[AN Hub] Login Sukses. Timer Baru: 24 Jam.")
+end
+
+Window:EditOpenButton({Title = "AN Hub", Draggable = true})
+
+-- [TABS]
+Window:Divider()
+local InfoTab = Window:Tab({ Title = "Info", Icon = "info"})
+InfoTab:Section({ Title = "Player", Icon = "user", Opened = true })
+local s, tUrl = pcall(function() return Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150) end)
+InfoTab:Paragraph({
+	Title = LocalPlayer.DisplayName .. " (@" .. LocalPlayer.Name .. ")",
+	Desc = "User ID: " .. tostring(LocalPlayer.UserId),
+	Image = s and tUrl or "rbxassetid://109266060342925",
+	ImageSize = 48,
+	Buttons = {{Title = "Copy HWID", Icon = "copy", Callback = function() setclipboard(tostring(gethwid and gethwid() or LocalPlayer.UserId)) end}}
+})
+
+-- [COUNTDOWN KEY EXPIRED]
+local KeyStatusParagraph = InfoTab:Paragraph({
+	Title = "Key Status",
+	Desc = "Checking...",
+	Image = "key", -- Ikon Kunci
+	ImageSize = 42
+})
+
+task.spawn(function()
+	while true do
+		if isfile(ExpiryFile) then
+			local expTime = tonumber(readfile(ExpiryFile)) or 0
+			local diff = expTime - os.time()
+			
+			if diff > 0 then
+				local h = math.floor(diff / 3600)
+				local m = math.floor((diff % 3600) / 60)
+				local s = diff % 60
+				KeyStatusParagraph:SetDesc(string.format("Valid for: %02d:%02d:%02d", h, m, s))
+			else
+				KeyStatusParagraph:SetDesc("Key EXPIRED. Please Re-execute.")
+			end
+		else
+			KeyStatusParagraph:SetDesc("Timer not found.")
+		end
+		task.wait(1)
+	end
+end)
+
+InfoTab:Section({ Title = "Community", Icon = "users", Opened = true })
+local DiscordInfo = InfoTab:Paragraph({Title = "Loading...", Desc = "...", Image = "rbxassetid://109266060342925", ImageSize = 42, Buttons = {{Title = "Copy Discord", Icon = "copy", Callback = function() setclipboard("https://discord.gg/kn9MFKgWWX") end}}})
+DiscordInfo.ParagraphFrame:Lock()
+
+local MainSection = Window:Section({ Title = "Main", Icon = "sword", Opened = true })
+
+local FarmTab = MainSection:Tab({ Title = "Auto Farm", Icon = "users" })
+FarmTab:Section({ Title = "Enemy Settings", Icon = "settings" })
+local EnemyDropdown = FarmTab:Dropdown({
+	Title = "Select Enemies",
+	Description = "List from Current Map (Sorted by HP)",
+	Multi = true,
+	Values = GetCurrentZoneEnemies(), 
+	Callback = function(items)
+		local targetList = {}
+		for _, item in pairs(items) do
+			local val = (type(item) == "table" and item.Value) or item
+			table.insert(targetList, val)
+		end
+		Config.TargetEnemies = targetList
+	end
+})
+
+task.spawn(function()
+	local lastZone = ""
+	while true do
+		local ZonesFolder = Workspace:FindFirstChild("Zones")
+		if ZonesFolder then
+			local mapFolder = ZonesFolder:GetChildren()[1]
+			if mapFolder then
+				if mapFolder.Name ~= lastZone then
+					lastZone = mapFolder.Name
+					Config.TargetEnemies = {} 
+					EnemyDropdown:Refresh(GetCurrentZoneEnemies())
+				end
+				if string.find(mapFolder.Name, "Dungeon") then
+					local currentCount = #EnemyDropdown.Values
+					local newEnemies = GetCurrentZoneEnemies()
+					if #newEnemies > currentCount then EnemyDropdown:Refresh(newEnemies) end
+				end
+			end
+		end
+		task.wait(2)
+	end
+end)
+
+FarmTab:Button({Title = "Refresh List", Icon = "refresh-cw", Callback = function() EnemyDropdown:Refresh(GetCurrentZoneEnemies()) end})
+FarmTab:Section({ Title = "Automation", Icon = "play" })
+FarmTab:Toggle({Title = "Auto Farm Selected", Callback = function(val) Config.AutoFarm = val; if val then task.spawn(LogicAutoFarm) end end})
+
+local DungeonTab = MainSection:Tab({ Title = "Dungeon", Icon = "skull" })
+DungeonTab:Dropdown({Title = "Select Difficulty", Multi = true, Values = dungeonList, Callback = function(val) Config.TargetDungeon = val end})
+DungeonTab:Toggle({Title = "Auto Dungeon", Callback = function(val) Config.AutoDungeon = val; if val then task.spawn(LogicAutoDungeon) end end})
+
+local GeneralTab = MainSection:Tab({ Title = "General", Icon = "settings" })
+GeneralTab:Toggle({Title = "Auto Rank Up", Callback = function(val) Config.AutoRankUp = val; if val then task.spawn(LogicRankUp) end end})
+GeneralTab:Toggle({Title = "Auto Fuse Weapons", Callback = function(val) Config.AutoFuse = val; if val then task.spawn(LogicAutoFuse) end end})
+GeneralTab:Button({Title = "FPS Booster", Icon = "zap", Callback = function() loadstring(game:HttpGet("https://raw.githubusercontent.com/khuyenbd88/RobloxKaitun/refs/heads/main/FPS%20Booster.lua"))() end})
+
+local AvatarSection = GeneralTab:Section({ Title = "Avatar Manager", Icon = "shirt", Opened = false }) 
+local PreviewSection = AvatarSection:Paragraph({Title = "Avatar Preview", Desc = "Select avatar below to view", Image = ""})
+local function UpdatePreview(avatarName)
+	local container = PreviewSection.ParagraphFrame.UIElements.Container
+	if container:FindFirstChild("ViewportFrame") then container.ViewportFrame:Destroy() end
+	local VP = Instance.new("ViewportFrame")
+	VP.Size = UDim2.new(1, 0, 0, 150); VP.BackgroundTransparency = 1; VP.Parent = container
+	local Assets = ReplicatedFirst:FindFirstChild("Assets") and ReplicatedFirst.Assets:FindFirstChild("Enemies")
+	if Assets then
+		local Model = Assets:FindFirstChild(avatarName)
+		if Model then
+			local Clone = Model:Clone(); Clone.Parent = VP
+			local Cam = Instance.new("Camera"); VP.CurrentCamera = Cam; Cam.Parent = VP
+			local Head = Clone:FindFirstChild("Head") or Clone.PrimaryPart
+			if Head then Cam.CFrame = CFrame.new(Head.CFrame.Position + (Head.CFrame.LookVector * 4) + Vector3.new(0, 0.5, 0), Head.CFrame.Position) end
+			task.spawn(function() while VP.Parent do if Head then Clone:PivotTo(Clone:GetPivot() * CFrame.Angles(0, math.rad(1), 0)) end task.wait(0.03) end end)
+		end
+	end
+end
+AvatarSection:Dropdown({Title = "Select Avatar", Description = "Sorted by Zone -> HP", Values = GetAvatarsWithStats(), Multi = false, Callback = function(selectedItem) local avatarKey = type(selectedItem) == "table" and selectedItem.Value or selectedItem; if avatarKey then UpdatePreview(avatarKey); pcall(function() ReplicatedStorage.Reply.Reliable:FireServer("Avatar Equip", { avatarKey }) end) end end})
+
+local function LoadDiscordInfo()
+	local API = "https://discord.com/api/v10/invites/kn9MFKgWWX?with_counts=true&with_expiration=true"
+	task.spawn(function()
+		local s, r = pcall(function() return HttpService:JSONDecode(l.Creator.Request({Url=API, Method="GET"}).Body) end)
+		if s and r and r.guild then DiscordInfo:SetTitle(r.guild.name); DiscordInfo:SetDesc('Members: '..r.approximate_member_count..'\nOnline: '..r.approximate_presence_count); DiscordInfo.ParagraphFrame:Unlock()
+		else DiscordInfo:SetTitle("Info Error"); DiscordInfo:SetDesc("Failed to load."); DiscordInfo.ParagraphFrame:Unlock() end
+	end)
+end
+InfoTab:Select(); LoadDiscordInfo()
