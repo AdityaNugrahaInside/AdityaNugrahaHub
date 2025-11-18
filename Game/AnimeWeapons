@@ -4,6 +4,7 @@
 
 local FolderPath = "ANHub/AnimeWeapons" 
 local ExpiryFile = "ANHub_Key_Timer.txt"
+local ZoneDBFile = "Zone_Database.json"
 
 local function SecureWipe()
     if not isfile or not delfile or not readfile or not listfiles then return end
@@ -48,9 +49,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ReplicatedFirst = game:GetService("ReplicatedFirst") 
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
+-- [UPDATE] Menggunakan VirtualInputManager untuk Tap Fisik
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 -- [REMOTE DEFINITION]
 local Reliable = ReplicatedStorage:WaitForChild("Reply"):WaitForChild("Reliable")
+local Unreliable = ReplicatedStorage:WaitForChild("Reply"):WaitForChild("Unreliable")
 
 -- [ASSET IDs]
 local IMG_OFF = "rbxassetid://137979607008446"
@@ -62,22 +66,108 @@ local Config = {
     AutoDungeon = false,
     AutoFuse = false,
     AutoRankUp = false,
+    AutoRollBiju = false,
+    AutoRollRace = false,
+    AutoRollSayajin = false,
+    AutoRollFruits = false, 
+    AutoRollHaki = false, 
+    AutoRollBreathing = false,
+    AntiAFK = false, 
     TargetEnemies = {}, 
+    ZoneConfigurations = {}, 
     TargetDungeon = {}, 
     TargetRaid = {},
 }
 
--- [VARIABLES]
+-- [GLOBAL VARIABLES]
 local hrp, humanoid
 local attackRangePart, attackRange
 local distance = 500 
 local LastZone = nil 
 
--- [DATA VARIABLES (SMART SYSTEM)]
+-- [SYNC VARIABLES]
+local CurrentZoneName = "" 
+local CurrentZoneEnemiesCache = {} 
+local IsLoadingConfig = false -- Flag Penting
+
+-- [DATA VARIABLES]
 local CurrentMastery = 0 
 local RankProgressUI = nil
 
+-- [DATA STORAGE]
+local TokenCounts = {} 
+local RollConfigs = {} 
+local AllRollTypes = {"Biju", "Race", "Sayajin", "Fruits", "Haki", "Breathing"}
+local RollToggleUI = {} 
+
+-- [MAPPING TABLE]
+local MaterialToConfig = {
+    ["Biju Shard"] = "AutoRollBiju",
+    ["Race Shard"] = "AutoRollRace",
+    ["Sayajin Shard"] = "AutoRollSayajin",
+    ["Fruits Shard"] = "AutoRollFruits",
+    ["Haki Shard"] = "AutoRollHaki",
+    ["Breathing Stone"] = "AutoRollBreathing",
+}
+
 -- [HELPER FUNCTIONS]
+
+local function LoadZoneDB()
+    if isfile("WindUI/"..FolderPath.."/"..ZoneDBFile) then
+        local success, result = pcall(function()
+            return HttpService:JSONDecode(readfile("WindUI/"..FolderPath.."/"..ZoneDBFile))
+        end)
+        if success and type(result) == "table" then
+            Config.ZoneConfigurations = result
+        end
+    end
+end
+
+-- Save function khusus untuk Dropdown
+local function SaveZoneConfig(zone, selectedItems)
+    if not zone or zone == "" or zone == "Unknown" then return end
+    
+    local cleanList = {}
+    local simpleList = {} 
+    
+    for _, item in pairs(selectedItems) do
+        local val = (type(item) == "table" and item.Value) or item
+        local title = (type(item) == "table" and item.Title) or item
+        
+        -- Simpan Value untuk logic AutoFarm
+        table.insert(simpleList, val)
+
+        -- Cari Object Lengkap di Cache agar data JSON valid (Title, HP, dll)
+        local foundObj = nil
+        for _, cached in ipairs(CurrentZoneEnemiesCache) do
+            if cached.Value == val then
+                foundObj = cached
+                break
+            end
+        end
+        
+        if foundObj then
+            table.insert(cleanList, foundObj)
+        else
+            -- Fallback
+            table.insert(cleanList, {Title = title, Value = val, Desc = "Saved"})
+        end
+    end
+    
+    -- Update Config Runtime
+    Config.TargetEnemies = simpleList
+    Config.ZoneConfigurations[zone] = cleanList
+    
+    -- Tulis ke File
+    if not isfolder("WindUI/"..FolderPath) then makefolder("WindUI/"..FolderPath) end
+    if writefile and HttpService then
+        pcall(function()
+            writefile("WindUI/"..FolderPath.."/"..ZoneDBFile, HttpService:JSONEncode(Config.ZoneConfigurations))
+        end)
+    end
+end
+
+LoadZoneDB()
 
 local function FormatNumber(n)
     n = tonumber(n)
@@ -122,7 +212,7 @@ local function GetOnlineKeys()
 end
 
 local function GetDynamicRankIcon()
-    local iconId = "bar-chart-2" -- Fallback icon
+    local iconId = "bar-chart-2" 
     pcall(function()
         local part = Workspace.Billboards.Machines.RankUp.icon
         if part and part.Image then iconId = part.Image end
@@ -130,7 +220,35 @@ local function GetDynamicRankIcon()
     return iconId
 end
 
--- [SERVER DATA SNIFFER]
+local function GetRollIconAsset(rollType)
+    local fallback = "rbxassetid://109266060342925" 
+    local assetId = ""
+
+    local success, err = pcall(function()
+        local machine = Workspace.Billboards.Machines:FindFirstChild(rollType)
+        if machine and machine:FindFirstChild("icon") then
+            assetId = machine.icon.Image
+        end
+    end)
+
+    if assetId == "" or assetId == nil then
+        if RollConfigs[rollType] and RollConfigs[rollType].ImageId then
+            assetId = RollConfigs[rollType].ImageId
+        end
+    end
+
+    if assetId and assetId ~= "" then
+        local cleanId = tostring(assetId):gsub("rbxassetid://", ""):gsub("http://www.roblox.com/asset/%?id=", "")
+        if tonumber(cleanId) then
+            return "rbxassetid://" .. cleanId
+        else
+            return assetId
+        end
+    end
+
+    return fallback
+end
+
 Reliable.OnClientEvent:Connect(function(cmd, data)
     if cmd == "Data Sync Update" and type(data) == "table" then
         local key = data[1]
@@ -138,6 +256,11 @@ Reliable.OnClientEvent:Connect(function(cmd, data)
         
         if key == "Attributes.Mastery" then
             CurrentMastery = tonumber(value) or 0
+        elseif string.find(key, "Materials.") then
+            local tokenType = key:match("Materials.(.*)Token")
+            if tokenType then
+                TokenCounts[tokenType] = math.floor(tonumber(value) or 0)
+            end
         end
     end
 end)
@@ -163,12 +286,7 @@ local function LoadDungeonData()
             local descText = "Hp Base: " .. FormatNumber(hpCalc)
             table.insert(dungeonList, {Title = dName, Desc = descText, Value = dName})
             dungeonDB[dName] = {ID = id, Time = dTime}
-            print("[AN Hub] Dungeon: " .. dName .. " | " .. descText)
         end
-    else
-        warn("[AN Hub] Using Backup Dungeon Data.")
-        dungeonList = {{Title="Easy", Desc="Backup Data", Value="Easy"}, {Title="Medium", Desc="Backup Data", Value="Medium"}, {Title="Hard", Desc="Backup Data", Value="Hard"}}
-        dungeonDB = {["Easy"]={ID=1, Time=0}, ["Medium"]={ID=2, Time=20}, ["Hard"]={ID=3, Time=40}}
     end
 end
 
@@ -187,17 +305,31 @@ local function LoadRaidData()
             local descText = "Hp Base: " .. FormatNumber(hpCalc)
             table.insert(raidList, {Title = rName, Desc = descText, Value = rName})
             raidDB[rName] = {ID = id, Times = rTimes}
-            print("[AN Hub] Raid: " .. rName .. " | " .. descText)
         end
+    end
+end
+
+local function LoadRollData(rollType)
+    local success, module = pcall(function()
+        return require(ReplicatedStorage.Scripts.Configs.RollGachas[rollType])
+    end)
+    
+    if success and module then
+        RollConfigs[rollType] = {
+            Cost = module.Cost or 1,
+            MaterialKey = module.Material or rollType .. "Token",
+            ImageId = module.ImageId 
+        }
     else
-        warn("[AN Hub] Using Backup Raid Data.")
-        raidList = {{Title="Shinobi", Desc="Backup Data", Value="Shinobi"}}
-        raidDB = {["Shinobi"] = {ID=1, Times={10, 40}}}
+        RollConfigs[rollType] = {Cost = 1, MaterialKey = rollType .. "Token", ImageId = "109266060342925"} 
     end
 end
 
 LoadDungeonData()
 LoadRaidData()
+for _, rollType in ipairs(AllRollTypes) do
+    LoadRollData(rollType)
+end
 
 -- [GAME DATA FUNCTIONS]
 local function GetCurrentZoneEnemies()
@@ -235,6 +367,7 @@ local function GetCurrentZoneEnemies()
         end
     end
     table.sort(list, function(a, b) return a.HP < b.HP end)
+    CurrentZoneEnemiesCache = list -- Simpan ke cache global
     return list
 end
 
@@ -273,12 +406,20 @@ local function GetAvatarsWithStats()
                 end
             end
         end
-        table.sort(list, function(a, b) if a._ZoneOrder ~= b._ZoneOrder then return a._ZoneOrder < b._ZoneOrder else return a._HP < b._HP end end)
+        table.sort(list, function(a, b) 
+            if a._ZoneOrder ~= b._ZoneOrder then 
+                return a._ZoneOrder < b._ZoneOrder 
+            else 
+                return a._HP < b._HP
+            end 
+        end)
     end
     return list
 end
 
--- [LOAD UI LIBRARY]
+-- ===================================
+-- [LOAD UI LIBRARY & DEFINE WINDOW]
+-- ===================================
 local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/refs/heads/main/dist/main.lua"))()
 local Window = l:CreateWindow({
     Title = "AN Hub - Anime Weapons",
@@ -305,11 +446,34 @@ local Window = l:CreateWindow({
 if not isfile(ExpiryFile) then writefile(ExpiryFile, tostring(os.time() + 86400)) end
 
 Window:OnDestroy(function()
-    Config.AutoFarm = false; Config.AutoDungeon = false; Config.AutoFuse = false; Config.AutoRankUp = false
-    pcall(function() Reliable:FireServer("Settings", {"AutoClick", false}) end)
-    pcall(function() Reliable:FireServer("Settings", {"AutoAttack", false}) end)
+    Config.AutoFarm = false; Config.AutoDungeon = false; Config.AutoFuse = false; Config.AutoRankUp = false; Config.AutoRollBiju = false; Config.AutoRollRace = false; Config.AutoRollSayajin = false; Config.AntiAFK = false
+    if Reliable then
+        pcall(function() Reliable:FireServer("Settings", {"AutoClick", false}) end)
+        pcall(function() Reliable:FireServer("Settings", {"AutoAttack", false}) end)
+    end
+    -- Simpan Config terakhir sebelum tutup
+    if CurrentZoneName ~= "" then
+        SaveZoneConfig(CurrentZoneName, Config.TargetEnemies)
+    end
     print("[AN Hub] Window destroyed. All automation stopped.")
 end)
+
+Unreliable.OnClientEvent:Connect(function(cmd, data)
+    if cmd == "Notify" and type(data) == "table" and data[1] == "NotEnough" then
+        local materialName = data[2] 
+        local configFlag = MaterialToConfig[materialName]
+        if configFlag and Config[configFlag] then
+            Config[configFlag] = false
+            local rollType = configFlag:match("AutoRoll(.*)")
+            local toggleObj = RollToggleUI[rollType]
+            if toggleObj and toggleObj.Set then
+                toggleObj:Set(false)
+                l:Notify({Title = "Auto Roll Stopped", Content = "Insufficient " .. materialName .. ". Auto Roll turned off.", Icon = "alert-triangle", Duration = 4})
+            end
+        end
+    end
+end)
+
 
 -- [LOGIC LOOPS]
 local function GetHRP() return LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") end
@@ -319,7 +483,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 end)
 pcall(function()
     if LocalPlayer.Character then hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart"); humanoid = LocalPlayer.Character:FindFirstChild("Humanoid") end
-    attackRangePart = Workspace:WaitForChild("AttackRange", 5) and Workspace.AttackRange.Part
+    attackRangePart = Workspace:FindFirstChild("AttackRange", 5) and Workspace.AttackRange.Part
     if attackRangePart then attackRange = attackRangePart.Size.X/2 end
 end)
 
@@ -341,6 +505,7 @@ local function kill(monster)
     local hrpToFeet = (hrp.Size.Y / 2) + (humanoid.HipHeight or 2)
     local safeHeight = 0 
     local headPos = getPosition(head)
+    if not headPos then return end
     local targetPos = headPos + Vector3.new(5, hrpToFeet + safeHeight, 5) 
     
     local alive = true
@@ -350,7 +515,11 @@ local function kill(monster)
         if head.Transparency ~= 0 then break end
         hrp.CFrame = CFrame.new(targetPos)
         if attackRangePart and getDistance(attackRangePart, monster) > distance then break end
-        targetPos = getPosition(head) + Vector3.new(5, hrpToFeet + safeHeight, 5) 
+        
+        local newHeadPos = getPosition(head)
+        if not newHeadPos then break end
+        targetPos = newHeadPos + Vector3.new(5, hrpToFeet + safeHeight, 5) 
+        
         task.wait()
     end
     if con then con:Disconnect() end
@@ -374,16 +543,49 @@ local function LogicAutoFarm()
     end
 end
 
+-- [UPDATED: TAP LAYAR FISIK TIMER 30 DETIK]
+local function LogicAntiAFK()
+    -- Menggunakan VirtualInputManager (VIM) untuk simulasi tap fisik
+    -- Loop manual setiap 30 detik agar pasti works di mobile
+    while Config.AntiAFK do
+        if Window.Destroyed then break end
+        
+        -- Tunggu 30 Detik
+        task.wait(30)
+        
+        if Config.AntiAFK and VirtualInputManager then
+            pcall(function()
+                local cam = Workspace.CurrentCamera
+                if cam then
+                    local viewport = cam.ViewportSize
+                    -- TAP DI POJOK KANAN BAWAH (X*0.85, Y*0.85)
+                    -- Lokasi ini biasanya aman (tombol lompat/kosong)
+                    -- Jauh dari tengah layar agar UI kamu tidak tertutup/terklik
+                    local tapX = viewport.X * 0.85
+                    local tapY = viewport.Y * 0.85
+                    
+                    -- Simulasi Sentuh (Touch Start -> End)
+                    VirtualInputManager:SendMouseButtonEvent(tapX, tapY, 0, true, game, 1)
+                    task.wait(0.1)
+                    VirtualInputManager:SendMouseButtonEvent(tapX, tapY, 0, false, game, 1)
+                end
+            end)
+        end
+    end
+end
+
 local function MaintainAutoStatus()
-    while Config.AutoFarm and not Window.Destroyed do
-        pcall(function()
-            local btn = Players.LocalPlayer.PlayerGui.Screen.Hud.botton.auto.enabled
-            if btn.Image == IMG_OFF then Reliable:FireServer("Settings", {"AutoClick", true}) end
-        end)
-        pcall(function()
-            local btn = Players.LocalPlayer.PlayerGui.Screen.Hud.botton.attack.enabled
-            if btn.Image == IMG_OFF then Reliable:FireServer("Settings", {"AutoAttack", true}) end
-        end)
+    while (Config.AutoFarm or Config.AutoDungeon) and not Window.Destroyed do
+        if Reliable then
+            pcall(function()
+                local btn = Players.LocalPlayer.PlayerGui.Screen.Hud.botton.auto.enabled
+                if btn.Image == IMG_OFF then Reliable:FireServer("Settings", {"AutoClick", true}) end
+            end)
+            pcall(function()
+                local btn = Players.LocalPlayer.PlayerGui.Screen.Hud.botton.attack.enabled
+                if btn.Image == IMG_OFF then Reliable:FireServer("Settings", {"AutoAttack", true}) end
+            end)
+        end
         task.wait(0.5)
     end
 end
@@ -395,9 +597,15 @@ local function isPlayerInZone(zone)
 end
 
 local function GetCurrentMapStatus()
-    for _, zone in pairs(Workspace.Zones:GetChildren()) do
-        if isPlayerInZone(zone) then return zone.Name end
+    local zones = Workspace:FindFirstChild("Zones")
+    if zones then
+        for _, zone in pairs(zones:GetChildren()) do
+            if isPlayerInZone(zone) then return zone.Name end
+        end
     end
+    if Workspace:FindFirstChild("Dungeon") then return "Dungeon" end
+    if Workspace:FindFirstChild("Raid") then return "Raid" end
+    if Workspace:FindFirstChild("Enemies") and not zones then return "Dungeon:Active" end
     return "Unknown"
 end
 
@@ -407,93 +615,115 @@ local function LogicGamemodes()
         if Window.Destroyed then break end
         local currentMap = GetCurrentMapStatus()
         
-        if string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") then
-            wasInGamemode = true
-            local enemies = Workspace:FindFirstChild("Enemies")
-            if enemies then
-                for _, m in pairs(enemies:GetChildren()) do
-                    if not Config.AutoDungeon then break end
-                    if m:FindFirstChild("Head") and m.Head.Transparency == 0 then kill(m) end
-                end
-            end
-        else
-            if wasInGamemode and LastZone then
-                l:Notify({Title="Mode Finished", Content="Returning to "..LastZone, Icon="map-pin", Duration=3})
-                pcall(function() Reliable:FireServer("Zone Teleport", { LastZone }) end)
-                wasInGamemode = false
-                task.wait(4)
-            end
+        local inLobbyZone = false
+        if Workspace:FindFirstChild("Zones") and Workspace.Zones:FindFirstChild("Dungeon") then
+            if isPlayerInZone(Workspace.Zones.Dungeon) then inLobbyZone = true end
+        end
 
-            local t = os.date("*t")
-            local currentMinute = t.min
-            local targetString = nil
-            local targetName = ""
-            
-            for _, dName in pairs(Config.TargetDungeon) do
-                local data = dungeonDB[dName] 
-                if data and currentMinute == data.Time then
-                    targetString = "Dungeon:" .. tostring(data.ID)
-                    targetName = dName
-                    break
+        local isFightingZone = string.find(currentMap, ":") and (string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid"))
+
+        if currentMap ~= "Unknown" then
+            if isFightingZone then
+                wasInGamemode = true
+                local enemies = Workspace:FindFirstChild("Enemies")
+                if enemies then
+                    for _, m in pairs(enemies:GetChildren()) do
+                        if not Config.AutoDungeon then break end
+                        if m:FindFirstChild("Head") and m.Head.Transparency == 0 then kill(m) end
+                    end
                 end
-            end
-            if not targetString then
-                for _, rName in pairs(Config.TargetRaid) do
-                    local data = raidDB[rName]
-                    if data and data.Times then
-                        for _, timeVal in ipairs(data.Times) do
-                            if currentMinute == timeVal then
-                                targetString = "Raid:" .. tostring(data.ID)
-                                targetName = rName
-                                break
+                task.wait(0.1)
+            elseif inLobbyZone or (wasInGamemode and not isFightingZone) then
+                if LastZone and LastZone ~= "" and LastZone ~= "Dungeon" and LastZone ~= "Raid" and LastZone ~= "Unknown" then
+                    l:Notify({Title="Dungeon Finished", Content="In Lobby -> Returning to "..LastZone, Icon="map-pin", Duration=3})
+                    if Reliable then pcall(function() Reliable:FireServer("Zone Teleport", { LastZone }) end) end
+                    wasInGamemode = false
+                    task.wait(4) 
+                else
+                    wasInGamemode = false 
+                end
+            else
+                local t = os.date("*t")
+                local currentMinute = t.min
+                local targetString = nil
+                local targetName = ""
+                
+                for _, dName in pairs(Config.TargetDungeon) do
+                    local data = dungeonDB[dName] 
+                    if data and currentMinute == data.Time then
+                        targetString = "Dungeon:" .. tostring(data.ID)
+                        targetName = dName
+                        break
+                    end
+                end
+                
+                if not targetString then
+                    for _, rName in pairs(Config.TargetRaid) do
+                        local data = raidDB[rName]
+                        if data and data.Times then
+                            for _, timeVal in ipairs(data.Times) do
+                                if currentMinute == timeVal then
+                                    targetString = "Raid:" .. tostring(data.ID)
+                                    targetName = rName
+                                    break
+                                end
                             end
                         end
+                        if targetString then break end
                     end
-                    if targetString then break end
                 end
-            end
-            
-            if targetString then 
-                LastZone = currentMap
-                l:Notify({Title="Auto Mode", Content="Joining "..targetName, Icon="swords", Duration=2})
-                pcall(function() Reliable:FireServer("Join Gamemode", {targetString}) end)
-                task.wait(4) 
+                
+                if targetString then 
+                    if not string.find(currentMap, "Dungeon") and not string.find(currentMap, "Raid") then
+                        LastZone = currentMap
+                    end
+                    l:Notify({Title="Auto Mode", Content="Joining "..targetName, Icon="swords", Duration=2})
+                    if Reliable then pcall(function() Reliable:FireServer("Join Gamemode", {targetString}) end) end
+                    task.wait(5) 
+                end
             end
         end
         task.wait(1)
     end
 end
 
--- [LOGIC: SMART RANK UP & UI UPDATE]
 local function LogicSmartRankUp()
     while Config.AutoRankUp do
         if Window.Destroyed then break end
-        
         local rankVal = 0
-        pcall(function() rankVal = Players.LocalPlayer.leaderstats.Rank.Value end)
-        
+        local leaderstats = Players.LocalPlayer:FindFirstChild("leaderstats")
+        local rankStat = leaderstats and leaderstats:FindFirstChild("Rank") 
+        if rankStat then rankVal = rankStat.Value end
         local Requirement = 30000 * (8.4 ^ rankVal)
-        
         local percent = 0
-        if Requirement > 0 then
-            percent = math.clamp(CurrentMastery / Requirement, 0, 1)
-        end
+        if Requirement > 0 then percent = math.clamp(CurrentMastery / Requirement, 0, 1) end
         local barText = string.rep("█", math.floor(percent*10)) .. string.rep("▒", 10 - math.floor(percent*10))
         
-        -- UPDATE UI PROGRESS BAR
         if RankProgressUI then
             RankProgressUI:SetTitle(string.format("Rank %d  [%s]  %d%%", rankVal, barText, math.floor(percent*100)))
             RankProgressUI:SetDesc(string.format("Mastery: %s / %s", FormatNumber(CurrentMastery), FormatNumber(Requirement)))
         end
         
-        -- Fire Server HANYA JIKA CUKUP
-        if CurrentMastery >= Requirement or CurrentMastery == 0 then
-             pcall(function() Reliable:FireServer("RankUp") end)
+        if CurrentMastery >= Requirement and CurrentMastery > 0 and Requirement > 0 then
+            if Reliable then pcall(function() Reliable:FireServer("RankUp") end) end
         end
-        
-        task.wait()
+        task.wait(1)
     end
 end
+
+local function LogicAutoRoll(rollType, configFlag)
+    while Config[configFlag] and not Window.Destroyed do
+        if Reliable then pcall(function() Reliable:FireServer("Crate Roll Start", {rollType, false}) end) end
+        task.wait(0.5)
+    end
+end
+local function LogicAutoRollBiju() LogicAutoRoll("Biju", "AutoRollBiju") end
+local function LogicAutoRollRace() LogicAutoRoll("Race", "AutoRollRace") end
+local function LogicAutoRollSayajin() LogicAutoRoll("Sayajin", "AutoRollSayajin") end
+local function LogicAutoRollFruits() LogicAutoRoll("Fruits", "AutoRollFruits") end
+local function LogicAutoRollHaki() LogicAutoRoll("Haki", "AutoRollHaki") end
+local function LogicAutoRollBreathing() LogicAutoRoll("Breathing", "AutoRollBreathing") end
+
 
 -- [UI ELEMENTS]
 
@@ -535,18 +765,31 @@ end)
 local MainSection = Window:Section({ Title = "Main Features", Icon = "sword", Opened = true })
 local FarmTab = MainSection:Tab({ Title = "Auto Farm", Icon = "users" })
 
+-- [DROPDOWN BARU]
 local EnemyDropdown = FarmTab:Dropdown({
     Title = "Select Enemies",
     Multi = true,
-    Values = GetCurrentZoneEnemies(), 
+    Values = {}, 
     Flag = "TargetEnemies_Cfg", 
-    Callback = function(items)
-        local t = {}
-        for _, item in pairs(items) do table.insert(t, (type(item) == "table" and item.Value) or item) end
-        Config.TargetEnemies = t
+    Callback = function(selectedItems)
+        if IsLoadingConfig then return end
+        SaveZoneConfig(CurrentZoneName, selectedItems)
     end
 })
-FarmTab:Button({Title = "Refresh List", Icon = "refresh-cw", Callback = function() EnemyDropdown:Refresh(GetCurrentZoneEnemies()) end})
+
+FarmTab:Button({
+    Title = "Refresh List", 
+    Icon = "refresh-cw", 
+    Callback = function() 
+        local enemies = GetCurrentZoneEnemies()
+        EnemyDropdown:Refresh(enemies)
+        
+        -- Restore jika data ada
+        if Config.ZoneConfigurations[CurrentZoneName] then
+             -- Trigger logic loop untuk restore (opsional, loop bawah sudah handle)
+        end
+    end
+})
 
 FarmTab:Toggle({
     Title = "Auto Farm", 
@@ -554,13 +797,17 @@ FarmTab:Toggle({
     Callback = function(val) 
         Config.AutoFarm = val
         if val then
-            pcall(function() Reliable:FireServer("Settings", {"AutoClick", true}) end)
-            pcall(function() Reliable:FireServer("Settings", {"AutoAttack", true}) end)
+            if Reliable then
+                pcall(function() Reliable:FireServer("Settings", {"AutoClick", true}) end)
+                pcall(function() Reliable:FireServer("Settings", {"AutoAttack", true}) end)
+            end
             task.spawn(MaintainAutoStatus)
             task.spawn(LogicAutoFarm) 
         else
-            pcall(function() Reliable:FireServer("Settings", {"AutoClick", false}) end)
-            pcall(function() Reliable:FireServer("Settings", {"AutoAttack", false}) end)
+            if Reliable then
+                pcall(function() Reliable:FireServer("Settings", {"AutoClick", false}) end)
+                pcall(function() Reliable:FireServer("Settings", {"AutoAttack", false}) end)
+            end
         end
     end
 })
@@ -597,24 +844,27 @@ DungeonTab:Toggle({
     Callback = function(val) 
         Config.AutoDungeon = val
         if val then 
-            pcall(function() Reliable:FireServer("Settings", {"AutoClick", true}) end)
-            pcall(function() Reliable:FireServer("Settings", {"AutoAttack", true}) end)
+            if Reliable then
+                pcall(function() Reliable:FireServer("Settings", {"AutoClick", true}) end)
+                pcall(function() Reliable:FireServer("Settings", {"AutoAttack", true}) end)
+            end
             task.spawn(MaintainAutoStatus)
             task.spawn(LogicGamemodes) 
         else
-            pcall(function() Reliable:FireServer("Settings", {"AutoClick", false}) end)
-            pcall(function() Reliable:FireServer("Settings", {"AutoAttack", false}) end)
+            if Reliable then
+                pcall(function() Reliable:FireServer("Settings", {"AutoClick", false}) end)
+                pcall(function() Reliable:FireServer("Settings", {"AutoAttack", false}) end)
+            end
         end
     end
 })
 
 local GeneralTab = MainSection:Tab({ Title = "General", Icon = "settings" })
 
--- [UI: RANK UP PROGRESS BAR]
 RankProgressUI = GeneralTab:Paragraph({
     Title = "Rank Progress",
     Desc = "Waiting for data...",
-    Image = GetDynamicRankIcon(), -- Menggunakan fungsi dynamic icon
+    Image = GetDynamicRankIcon(), 
     ImageSize = 40
 })
 
@@ -629,7 +879,93 @@ GeneralTab:Toggle({
     end
 })
 
-GeneralTab:Toggle({Title = "Auto Fuse Weapons", Flag = "AutoFuse_Cfg", Callback = function(val) Config.AutoFuse = val; if val then task.spawn(function() while Config.AutoFuse do if Window.Destroyed then break end pcall(function() Reliable:FireServer("Weapon Fuse All") end) task.wait(5) end end) end end})
+local RollSection = GeneralTab:Section({ Title = "Auto Roll", Icon = "refresh-cw" })
+
+local function GetTokenDisplay(rollType)
+    if rollType == "Biju" then return "Biju"
+    elseif rollType == "Race" then return "Race"
+    elseif rollType == "Sayajin" then return "Sayajin"
+    elseif rollType == "Fruits" then return "Fruits"
+    elseif rollType == "Haki" then return "Haki"
+    elseif rollType == "Breathing" then return "Breathing"
+    else return rollType
+    end
+end
+
+local rollToggleData = {
+    {"Biju", "AutoRollBiju", LogicAutoRollBiju},
+    {"Race", "AutoRollRace", LogicAutoRollRace},
+    {"Sayajin", "AutoRollSayajin", LogicAutoRollSayajin},
+    {"Fruits", "AutoRollFruits", LogicAutoRollFruits},
+    {"Haki", "AutoRollHaki", LogicAutoRollHaki},
+    {"Breathing", "AutoRollBreathing", LogicAutoRollBreathing}
+}
+
+for i, rollData in ipairs(rollToggleData) do
+    local rollType = rollData[1]
+    local configFlag = rollData[2]
+    local logicFunc = rollData[3]
+    local tokenDisplay = GetTokenDisplay(rollType)
+
+    local myToggle = RollSection:Toggle({ 
+        Title = tokenDisplay,
+        Flag = configFlag .. "_Cfg",
+        Callback = function(val)
+            Config[configFlag] = val
+            if val then task.spawn(logicFunc) end
+        end
+    })
+
+    if myToggle.ToggleFrame and myToggle.ToggleFrame.UIElements and myToggle.ToggleFrame.UIElements.Main then
+        local toggleMain = myToggle.ToggleFrame.UIElements.Main
+        local sectionContent = toggleMain.Parent 
+        
+        if not sectionContent:FindFirstChild("CustomGrid") then
+            local oldLayout = sectionContent:FindFirstChildOfClass("UIListLayout")
+            if oldLayout then oldLayout:Destroy() end
+            
+            local grid = Instance.new("UIGridLayout")
+            grid.Name = "CustomGrid"
+            grid.Parent = sectionContent
+            grid.SortOrder = Enum.SortOrder.LayoutOrder
+            grid.CellSize = UDim2.new(0.485, 0, 0, 45) 
+            grid.CellPadding = UDim2.new(0.02, 0, 0.02, 0)
+        end
+
+        local toggleFrame = toggleMain:FindFirstChild("Frame") 
+        if toggleFrame then
+            local manualImg = Instance.new("ImageLabel")
+            manualImg.Name = "ManualIcon"
+            manualImg.Size = UDim2.fromOffset(28, 28) 
+            manualImg.BackgroundTransparency = 1
+            manualImg.Image = GetRollIconAsset(rollType)
+            manualImg.LayoutOrder = -2 
+            manualImg.Parent = toggleFrame
+            
+            local padding = Instance.new("UIPadding")
+            padding.PaddingRight = UDim.new(0, 8)
+            padding.Parent = manualImg
+
+            local textLabel = toggleFrame:FindFirstChildOfClass("TextLabel")
+            if textLabel then
+                textLabel.LayoutOrder = -1 
+                textLabel.TextXAlignment = Enum.TextXAlignment.Left
+            end
+            
+            local listLayout = toggleFrame:FindFirstChildOfClass("UIListLayout")
+            if listLayout then
+                listLayout.FillDirection = Enum.FillDirection.Horizontal
+                listLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+                listLayout.Padding = UDim.new(0, 6) 
+            end
+        end
+    end
+
+    RollToggleUI[rollType] = myToggle
+end
+
+
+GeneralTab:Toggle({Title = "Auto Fuse Weapons", Flag = "AutoFuse_Cfg", Callback = function(val) Config.AutoFuse = val; if val then task.spawn(function() while Config.AutoFuse do if Window.Destroyed then break end if Reliable then pcall(function() Reliable:FireServer("Weapon Fuse All") end) end task.wait(5) end end) end end})
 GeneralTab:Button({Title = "FPS Booster", Icon = "zap", Callback = function() loadstring(game:HttpGet("https://raw.githubusercontent.com/khuyenbd88/RobloxKaitun/refs/heads/main/FPS%20Booster.lua"))() end})
 
 local AvatarSection = GeneralTab:Section({ Title = "Avatar Manager", Icon = "shirt", Opened = false }) 
@@ -656,6 +992,7 @@ AvatarSection:Dropdown({
     Description = "Sorted by Zone -> HP", 
     Values = GetAvatarsWithStats(), 
     Multi = false, 
+    Flag = "Avatar_Select_Cfg",
     Callback = function(selectedItem) 
         local avatarKey = type(selectedItem) == "table" and selectedItem.Value or selectedItem
         if avatarKey then 
@@ -669,22 +1006,114 @@ local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings-2" })
 SettingsTab:Section({ Title = "Config Manager", Icon = "save" })
 local ConfigName = "ANConfig"
 SettingsTab:Input({ Title = "Config Name", Placeholder = "ANConfig", Flag = "ConfigName_Input", Callback = function(txt) ConfigName = txt end })
-SettingsTab:Button({ Title = "Save Config", Icon = "save", Callback = function() Window.ConfigManager:CreateConfig(ConfigName):Save(); Window:Notify({Title="Success", Content="Saved!", Icon="check"}) end })
-SettingsTab:Button({ Title = "Load Config", Icon = "upload", Callback = function() local cfg = Window.ConfigManager:GetConfig(ConfigName); if cfg then cfg:Load(); Window:Notify({Title="Success", Content="Loaded!", Icon="check"}) end end })
+SettingsTab:Button({ Title = "Save Config", Icon = "save", Callback = function() 
+    Window.ConfigManager:CreateConfig(ConfigName):Save()
+    if CurrentZoneName ~= "" then
+        SaveZoneConfig(CurrentZoneName, Config.TargetEnemies)
+    end
+    Window:Notify({Title="Success", Content="Saved!", Icon="check"}) 
+end })
+SettingsTab:Button({ Title = "Load Config", Icon = "upload", Callback = function() 
+    local cfg = Window.ConfigManager:GetConfig(ConfigName); 
+    LoadZoneDB() 
+    if cfg then cfg:Load(); Window:Notify({Title="Success", Content="Loaded!", Icon="check"}) end 
+end })
 SettingsTab:Button({ Title = "Delete Config", Icon = "trash", Callback = function() Window.ConfigManager:DeleteConfig(ConfigName); Window:Notify({Title="Success", Content="Deleted!", Icon="trash"}) end })
+SettingsTab:Toggle({
+    Title = "Bypass Auto Reconnect", 
+    Desc = "Tap Layar Fisik (30s Timer)",
+    Flag = "AntiAFK_Cfg", 
+    Callback = function(val) 
+        Config.AntiAFK = val
+        if val then task.spawn(LogicAntiAFK) end
+    end
+})
 
+-- [LOGIC: ZONE MONITOR & SYNC V10]
 task.spawn(function()
-    local lastZone = ""
+    local prevZone = ""
+    
     while not Window.Destroyed do
-        local zones = Workspace:FindFirstChild("Zones")
-        if zones and zones:GetChildren()[1] then
-            local currentZone = zones:GetChildren()[1].Name
-            if currentZone ~= lastZone then
-                lastZone = currentZone
-                EnemyDropdown:Refresh(GetCurrentZoneEnemies())
+        task.wait(1) -- Interval cek zona
+        
+        local detectedZone = GetCurrentMapStatus()
+        
+        -- Cek jika pindah zona
+        if detectedZone and detectedZone ~= "Unknown" and detectedZone ~= prevZone then
+            prevZone = detectedZone
+            CurrentZoneName = detectedZone
+            
+            -- [PHASE 1] KUNCI SISTEM (PENTING!)
+            IsLoadingConfig = true 
+            
+            -- [PHASE 2] SCAN MUSUH
+            local freshEnemies = GetCurrentZoneEnemies()
+            CurrentZoneEnemiesCache = freshEnemies -- Update Cache Global
+            
+            -- [PHASE 3] REFRESH DROPDOWN (KOSONGKAN DULU)
+            -- Kita refresh list opsi, tapi visual seleksi belum masuk
+            pcall(function() EnemyDropdown:Refresh(freshEnemies) end)
+            task.wait(0.2) -- Jeda visual
+            
+            -- [PHASE 4] RESTORE DATA DARI JSON
+            local savedData = Config.ZoneConfigurations[detectedZone] or {}
+            local objectsToSelect = {}
+            local valuesForConfig = {}
+            
+            -- Logika Pencocokan Cerdas:
+            -- Kita punya list musuh saat ini (freshEnemies) dan data simpanan (savedData).
+            -- Kita harus mencari Object 'freshEnemies' yang Value-nya SAMA dengan 'savedData'.
+            -- WindUI butuh Object 'freshEnemies' itu agar bisa mencentangnya.
+            
+            for _, savedItem in ipairs(savedData) do
+                for _, currentMob in ipairs(freshEnemies) do
+                    -- Bandingkan ID/Value uniknya (misal: "Marco")
+                    if currentMob.Value == savedItem.Value then
+                        -- KETEMU! Masukkan Object game saat ini ke daftar seleksi
+                        table.insert(objectsToSelect, currentMob) 
+                        table.insert(valuesForConfig, currentMob.Value)
+                        break
+                    end
+                end
             end
+            
+            -- [PHASE 5] TERAPKAN SELEKSI
+            if #objectsToSelect > 0 then
+                -- Update Config AutoFarm (String List)
+                Config.TargetEnemies = valuesForConfig
+                
+                -- Update Visual Dropdown (Object List) -> Ini yang bikin tercentang!
+                pcall(function()
+                    EnemyDropdown:Select(objectsToSelect)
+                end)
+                
+                -- Update Text Label Dropdown (Feedback Visual Tambahan)
+                pcall(function()
+                    if EnemyDropdown.UIElements and EnemyDropdown.UIElements.Dropdown then
+                        local label = EnemyDropdown.UIElements.Dropdown.Frame.Frame.TextLabel
+                        if #objectsToSelect == 1 then
+                            label.Text = objectsToSelect[1].Title
+                        else
+                            label.Text = #objectsToSelect .. " Selected"
+                        end
+                    end
+                end)
+            else
+                -- Jika tidak ada data, reset
+                Config.TargetEnemies = {}
+                pcall(function() 
+                    EnemyDropdown:Select({}) 
+                    -- Reset text label
+                    if EnemyDropdown.UIElements and EnemyDropdown.UIElements.Dropdown then
+                        EnemyDropdown.UIElements.Dropdown.Frame.Frame.TextLabel.Text = "--"
+                    end
+                end)
+            end
+            
+            -- [PHASE 6] BUKA KUNCI
+            task.wait(0.2)
+            IsLoadingConfig = false
         end
-        task.wait(2)
     end
 end)
 
@@ -698,13 +1127,17 @@ task.spawn(function()
         if isfile("WindUI/"..FolderPath.."/config/"..DefaultConfig..".json") then
             local cfg = CM:GetConfig(DefaultConfig) or CM:CreateConfig(DefaultConfig)
             cfg:Load()
+            LoadZoneDB()
             l:Notify({Title = "Config", Content = "Restored ANConfig", Icon = "check", Duration = 2})
         else CM:CreateConfig(DefaultConfig) end
     end)
     
     while not Window.Destroyed do
         task.wait(10)
-        pcall(function() local cfg = CM:GetConfig(DefaultConfig); if cfg then cfg:Save() else CM:CreateConfig(DefaultConfig):Save() end end)
+        pcall(function() local cfg = Window.ConfigManager:GetConfig(DefaultConfig); if cfg then cfg:Save() else CM:CreateConfig(DefaultConfig):Save() end end)
+        if CurrentZoneName ~= "" then
+             SaveZoneConfig(CurrentZoneName, Config.TargetEnemies)
+        end
     end
 end)
 
