@@ -982,12 +982,11 @@ local function LogicAutoRollBreathing() LogicAutoRoll("Breathing", "AutoRollBrea
 -- ============================================================================
 
 local InfoTab = Window:Tab({ Title = "Info", Icon = "info"})
-local PlayerSection = InfoTab:Section({ Title = "Player", Icon = "user", Opened = true })
+-- [UPDATED] Removed Section, using direct Paragraph
 local s, tUrl = pcall(function() return Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150) end)
--- [UPDATED] Combined Player Info & Key Status into one paragraph
-local PlayerParagraph = PlayerSection:Paragraph({
+local PlayerParagraph = InfoTab:Paragraph({
     Title = LocalPlayer.DisplayName,
-    Desc = "User ID: " .. tostring(LocalPlayer.UserId) .. "\nKey Valid: Checking...",
+    Desc = "User ID: " .. tostring(LocalPlayer.UserId) .. "\nKey Valid: Verifying...",
     Image = s and tUrl or "rbxassetid://109266060342925",
     ImageSize = 48,
     Buttons = {{Title = "Copy HWID", Icon = "copy", Callback = function() setclipboard(tostring(gethwid and gethwid() or LocalPlayer.UserId)) end}}
@@ -995,34 +994,33 @@ local PlayerParagraph = PlayerSection:Paragraph({
 
 -- Background task to update Key Status inside PlayerParagraph
 task.spawn(function()
-    task.wait(1) -- Safe delay for initial UI render
+    -- [FIX] Removed Delay, added robust loop
     while not Window.Destroyed do
-        -- Use pcall to safely check file status
         local success, result = pcall(function()
             if isfile(ExpiryFile) then
-                local content = readfile(ExpiryFile)
-                return tonumber(content) or 0
+                return tonumber(readfile(ExpiryFile)) or 0
             end
             return 0
         end)
 
+        local statusText = "Checking..."
         if success and result > 0 then
             local diff = result - os.time()
             if diff > 0 then
                 local h = math.floor(diff / 3600)
                 local m = math.floor((diff % 3600) / 60)
-                if PlayerParagraph and PlayerParagraph.SetDesc then
-                    PlayerParagraph:SetDesc("User ID: " .. tostring(LocalPlayer.UserId) .. "\nKey Valid: " .. string.format("%02dh %02dm", h, m))
-                end
+                statusText = string.format("%02dh %02dm", h, m)
             else
-                if PlayerParagraph and PlayerParagraph.SetDesc then
-                    PlayerParagraph:SetDesc("User ID: " .. tostring(LocalPlayer.UserId) .. "\nKey Valid: EXPIRED")
-                end
+                statusText = "EXPIRED"
             end
         else
-            if PlayerParagraph and PlayerParagraph.SetDesc then
-                PlayerParagraph:SetDesc("User ID: " .. tostring(LocalPlayer.UserId) .. "\nKey Valid: No Timer")
-            end
+            statusText = "No Timer"
+        end
+        
+        if PlayerParagraph and PlayerParagraph.SetDesc then
+             pcall(function()
+                 PlayerParagraph:SetDesc("User ID: " .. tostring(LocalPlayer.UserId) .. "\nKey Valid: " .. statusText)
+             end)
         end
         task.wait(1)
     end
@@ -1246,7 +1244,7 @@ task.spawn(function()
     -- Setup Rank Button
     SetupButton("Rank", GetDynamicRankIcon())
 
-    -- Setup Trainer Button
+    -- Setup Trainer Button (NEW ICON)
     SetupButton("Trainer", "rbxassetid://10723415903") -- Trainer/Dumbbell Icon
 end)
 
@@ -1502,7 +1500,7 @@ end)
 -- [FIX: AUTO RESIZE FIX FOR ALL SECTIONS INCLUDING MAIN FEATURE]
 -- Force Open all sections once to recalculate layout height
 local AllSections = {
-    PlayerSection, CommunitySection,
+    CommunitySection, -- PlayerSection Removed
     MainSection, 
     FarmingManagerSection, -- Updated to new section name
     MaterialSection, RollSection, AvatarSection,
