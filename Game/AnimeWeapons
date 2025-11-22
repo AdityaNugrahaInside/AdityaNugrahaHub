@@ -291,11 +291,14 @@ local Config = {
     AutoRollFruits = false,
     AutoRollHaki = false,
     AutoRollBreathing = false,
+    AutoRollOrganization = false,
+    AutoRollTitan = false,
 
     -- Chance Upgrades
     AutoChance_Breath = false,
     AutoChance_Pirate = false,
     AutoChance_Wise = false,
+    AutoChance_Leve = false,
 
     -- FARM CONFIG
     SelectedEnemy = nil,
@@ -313,8 +316,8 @@ local IsTeleporting = false
 
 local GlobalEnemyMap = {}
 local RollConfigs = {}
-local AllRollTypes = {"Biju", "Race", "Sayajin", "Fruits", "Haki", "Breathing"}
-local ChanceUpgradeTypes = {"Breath", "Pirate", "Wise"} 
+local AllRollTypes = {"Biju", "Race", "Sayajin", "Fruits", "Haki", "Breathing","Organization","Titan"}
+local ChanceUpgradeTypes = {"Breath", "Pirate", "Wise","Leve"} 
 
 local EnemyDropdown = nil
 local RankProgressUI = nil
@@ -322,8 +325,7 @@ local MaterialInfoUI = nil
 local RollToggleUI = {}
 local YenUpgradeToggleUI = {}
 local TokenUpgradeToggleUI = {} 
-local ChanceUpgradeToggleUI = {} -- Store Chance Upgrade Toggles
-local AvatarDropdown = nil 
+local ChanceUpgradeToggleUI = {} 
 
 getgenv().PlayerData = nil
 
@@ -421,7 +423,6 @@ local RankModule = require(ConfigsPath.Machines.RankUp)
 local UtilsModule = require(ConfigsPath.Utility.Utils)
 local MaterialsModule = require(ConfigsPath.General.Materials)
 
--- [NEW] LOAD CHANCE UPGRADE MODULES DIRECTLY
 local ChanceModules = {}
 local ChancePath = ReplicatedStorage.Scripts.Configs:FindFirstChild("ChanceUpgrades")
 if ChancePath then
@@ -439,11 +440,9 @@ local YenUpgradeConfig = YenModule.Config
 local TokenUpgradeConfig = TokenModule.Config 
 local MaxRankCap = RankModule.MAX or 33
 
--- YEN HELPERS
 local function GetYenCost(lvl) return YenModule.GetUpgradeCost(lvl) end
 local function GetYenBuff(name, lvl) return YenModule.GetUpgradeBuff(name, lvl) end
 
--- TOKEN HELPERS
 local function GetTokenCost(lvl) return TokenModule.GetUpgradeCost(lvl) end
 local function GetTokenBuff(name, lvl) return TokenModule.GetUpgradeBuff(name, lvl) end
 
@@ -453,15 +452,15 @@ local function FormatNumber(n) return UtilsModule.ToText(n) end
 
 local RollMaterialMap = {
     Biju = "BijuToken", Race = "RaceToken", Sayajin = "SayajinToken",
-    Fruits = "FruitsToken", Haki = "HakiToken", Breathing = "BreathingToken"
+    Fruits = "FruitsToken", Haki = "HakiToken", Breathing = "BreathingToken", Organization = "OrganizationToken", Titan = "TitanToken"
 }
 local RollDisplayNames = {
     Biju = "Biju Shard", Race = "Race Shard", Sayajin = "Sayajin Shard",
-    Fruits = "Fruits Shard", Haki = "Haki Shard", Breathing = "Breathing Stone"
+    Fruits = "Fruits Shard", Haki = "Haki Shard", Breathing = "Breathing Stone", Organization = "Organization Shard", Titan = "Titan Shard"
 }
 local RollTypeToConfig = {
     Biju = "AutoRollBiju", Race = "AutoRollRace", Sayajin = "AutoRollSayajin",
-    Fruits = "AutoRollFruits", Haki = "AutoRollHaki", Breathing = "AutoRollBreathing"
+    Fruits = "AutoRollFruits", Haki = "AutoRollHaki", Breathing = "AutoRollBreathing", Organization = "AutoRollOrganization", Titan = "AutoRollTitan"
 }
 
 -- ============================================================================
@@ -620,10 +619,8 @@ end
 local function GetAvatarsWithStats()
     local list, zoneOrders, machineStats = {}, {}, {}
     
-    -- 1. Data Player (Equivalent to arg1.Data in Avatar.c)
     local Data = getgenv().PlayerData
     
-    -- 2. Load Dependencies
     local zonesConfigPath = ReplicatedStorage:FindFirstChild("Scripts") and ReplicatedStorage.Scripts.Configs:FindFirstChild("Zones")
     if zonesConfigPath then
         local s, r = pcall(require, zonesConfigPath)
@@ -646,23 +643,18 @@ local function GetAvatarsWithStats()
                 
                 if success and type(data) == "table" then
                     for internalKey, stats in pairs(data) do
-                        
-                        -- LOGIC DARI AVATAR.C:
-                        -- Check Ownership (Morphs)
                         local isOwned = false
                         if Data and Data.Morphs and Data.Morphs[internalKey] then
                             isOwned = true
                         end
 
-                        -- Check Equipped (Attributes.Avatar)
                         local isEquipped = false
                         if Data and Data.Attributes and Data.Attributes.Avatar == internalKey then
                             isEquipped = true
                         end
                         
-                        -- Formatting Display based on Avatar.c Logic
                         local statusPrefix = "[LOCKED]"
-                        if isOwned then statusPrefix = "" end -- If owned, normal display
+                        if isOwned then statusPrefix = "" end
                         if isEquipped then statusPrefix = "[EQUIPPED]" end
                         
                         local mStat = machineStats[internalKey]
@@ -675,7 +667,6 @@ local function GetAvatarsWithStats()
                         local finalDesc = (#descParts > 0) and table.concat(descParts, " | ") or "No Stats"
                         if not isOwned then finalDesc = "LOCKED - Defeat to unlock" end
 
-                        -- Push to list
                         table.insert(list, {
                             Title = (statusPrefix ~= "" and statusPrefix .. " " or "") .. (stats.Display or internalKey),
                             Value = internalKey,
@@ -690,7 +681,6 @@ local function GetAvatarsWithStats()
             end
         end
         
-        -- Sorting Logic (Mirrors Avatar.c: Sort by Zone Order -> Difficulty/HP)
         table.sort(list, function(a, b)
             if a._ZoneOrder ~= b._ZoneOrder then 
                 return a._ZoneOrder < b._ZoneOrder 
@@ -736,15 +726,11 @@ Window:OnDestroy(function()
     Config.AutoFarm = false; Config.AutoDungeon = false; Config.AutoFuse = false; Config.AutoRankUp = false;
     Config.AutoRollBiju = false; Config.AutoRollRace = false; Config.AutoRollSayajin = false;
     Config.AutoYen_Luck = false; Config.AutoYen_Damage = false; Config.AutoYen_Yen = false; Config.AutoYen_Mastery = false; Config.AutoYen_Critical = false
-    -- Reset Token Configs if needed, though not critical as they are dynamic
     if CurrentZoneName ~= "" and Config.SelectedEnemy then 
         SaveZoneConfig(CurrentZoneName, Config.SelectedEnemy) 
     end
 end)
 
--- ============================================================================
--- [HELPER UI: CREATE SECTION TABS (BUTTON VERSION) - FIXED RESIZE LOGIC]
--- ============================================================================
 local function CreateTabButtons(section, tabNames)
     local TabSystem = {
         CurrentTab = tabNames[1],
@@ -773,8 +759,6 @@ local function CreateTabButtons(section, tabNames)
     
     local function UpdateVisibility(selectedTab)
         TabSystem.CurrentTab = selectedTab
-        
-        -- 1. Toggle Visibility Elements
         for name, objects in pairs(TabSystem.Elements) do
             local isVisible = (name == selectedTab)
             for _, obj in ipairs(objects) do
@@ -785,8 +769,6 @@ local function CreateTabButtons(section, tabNames)
                 end
             end
         end
-
-        -- 2. Visual updates for buttons (colors)
         for name, btn in pairs(TabSystem.ButtonObjects) do
             local isSelected = (name == selectedTab)
             local targetColor = isSelected and Color3.fromRGB(60, 200, 120) or Color3.fromRGB(45, 45, 45)
@@ -794,8 +776,6 @@ local function CreateTabButtons(section, tabNames)
             game:GetService("TweenService"):Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = targetColor}):Play()
             game:GetService("TweenService"):Create(btn.TextLabel, TweenInfo.new(0.2), {TextColor3 = targetText}):Play()
         end
-
-        -- 3. AUTO RESIZE FIX (Khusus Button Tabs)
         task.spawn(function()
             task.wait(0.05)
             if section.Opened then
@@ -957,32 +937,68 @@ local function LogicGamemodes()
     end
 end
 
-local function LogicAutoRoll(rollType, configFlag)
-    local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-    local uiConnection
-    uiConnection = RunService.RenderStepped:Connect(function()
-        if not Config[configFlag] then if uiConnection then uiConnection:Disconnect() end return end
-        local CrateUI = PlayerGui:FindFirstChild("Crate"); if CrateUI then CrateUI.Parent = nil end
-        local ScreenUI = PlayerGui:FindFirstChild("Screen"); if ScreenUI and not ScreenUI.Enabled then ScreenUI.Enabled = true end
-        local Topbar = PlayerGui:FindFirstChild("TopbarStandard"); if Topbar and not Topbar.Enabled then Topbar.Enabled = true end
-    end)
-    while Config[configFlag] and not Window.Destroyed do if Reliable then pcall(function() Reliable:FireServer("Crate Roll Start", {rollType, false}) end) end task.wait(0.1) end
-    if uiConnection then uiConnection:Disconnect() end
-end
+-- [NEW LOGIC] MASTER ROLL CONTROLLER (SEQUENTIAL)
+-- Ini menggantikan fungsi individual loop
+task.spawn(function()
+    while not Window.Destroyed do
+        local anyRollActive = false
+        local rollList = {"Biju", "Race", "Sayajin", "Fruits", "Haki", "Breathing","Organization","Titan"}
+        
+        -- Loop setiap tipe roll satu per satu (Sequential)
+        for _, rollType in ipairs(rollList) do
+            -- Cek jika config aktif
+            if Config["AutoRoll" .. rollType] then
+                anyRollActive = true
+                
+                -- Eksekusi Remote
+                if Reliable then
+                    pcall(function() 
+                        Reliable:FireServer("Crate Roll Start", {rollType, false}) 
+                    end)
+                end
+                
+                -- Delay 1.5 Detik sebelum lanjut ke tipe berikutnya atau roll berikutnya
+                task.wait(1.5)
+            end
+        end
 
-local function LogicAutoRollBiju() LogicAutoRoll("Biju", "AutoRollBiju") end
-local function LogicAutoRollRace() LogicAutoRoll("Race", "AutoRollRace") end
-local function LogicAutoRollSayajin() LogicAutoRoll("Sayajin", "AutoRollSayajin") end
-local function LogicAutoRollFruits() LogicAutoRoll("Fruits", "AutoRollFruits") end
-local function LogicAutoRollHaki() LogicAutoRoll("Haki", "AutoRollHaki") end
-local function LogicAutoRollBreathing() LogicAutoRoll("Breathing", "AutoRollBreathing") end
+        -- Jika tidak ada roll yang aktif, beri delay agar tidak memberatkan CPU
+        if not anyRollActive then
+            task.wait(1)
+        end
+    end
+end)
+
+-- [UI HANDLER FOR ROLLING]
+-- Menyembunyikan UI game saat roll aktif
+task.spawn(function()
+    local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+    while not Window.Destroyed do
+        local isRolling = false
+        local rollList = {"Biju", "Race", "Sayajin", "Fruits", "Haki", "Breathing","Organization","Titan"}
+        for _, rType in pairs(rollList) do
+            if Config["AutoRoll" .. rType] then isRolling = true break end
+        end
+
+        if isRolling then
+            local CrateUI = PlayerGui:FindFirstChild("Crate")
+            if CrateUI then CrateUI.Parent = nil end
+            
+            local ScreenUI = PlayerGui:FindFirstChild("Screen")
+            if ScreenUI and not ScreenUI.Enabled then ScreenUI.Enabled = true end
+            
+            local Topbar = PlayerGui:FindFirstChild("TopbarStandard")
+            if Topbar and not Topbar.Enabled then Topbar.Enabled = true end
+        end
+        task.wait(0.5)
+    end
+end)
 
 -- ============================================================================
 -- [UI CONSTRUCTION - TABS & SECTIONS]
 -- ============================================================================
 
 local InfoTab = Window:Tab({ Title = "Info", Icon = "info"})
--- [UPDATED] Removed Section, using direct Paragraph
 local s, tUrl = pcall(function() return Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150) end)
 local PlayerParagraph = InfoTab:Paragraph({
     Title = LocalPlayer.DisplayName,
@@ -992,9 +1008,7 @@ local PlayerParagraph = InfoTab:Paragraph({
     Buttons = {{Title = "Copy HWID", Icon = "copy", Callback = function() setclipboard(tostring(gethwid and gethwid() or LocalPlayer.UserId)) end}}
 })
 
--- Background task to update Key Status inside PlayerParagraph
 task.spawn(function()
-    -- [FIX] Removed Delay, added robust loop
     while not Window.Destroyed do
         local success, result = pcall(function()
             if isfile(ExpiryFile) then
@@ -1032,14 +1046,11 @@ task.spawn(function() local API = "https://discord.com/api/v10/invites/cy6uMRmeZ
 
 local MainSection = Window:Section({ Title = "Main Features", Icon = "sword", Opened = true })
 
--- [FARMING TAB CONFIG]
 local FarmTab = MainSection:Tab({ Title = "Farming", Icon = "swords" })
 local FarmingManagerSection = FarmTab:Section({ Title = "Farming Manager", Icon = "activity", Opened = true })
 
--- Create Tabs inside Farming Manager
 local FarmTabs = CreateTabButtons(FarmingManagerSection, {"Zone Farming", "Gamemodes"})
 
--- Add Icons to Farm Tabs
 task.spawn(function()
     task.wait(0.1)
     local function SetupButton(btnName, iconId)
@@ -1062,11 +1073,10 @@ task.spawn(function()
             iconImg.ScaleType = Enum.ScaleType.Fit
         end
     end
-    SetupButton("Zone Farming", "rbxassetid://10709791437") -- Target Icon
-    SetupButton("Gamemodes", "rbxassetid://10709752906") -- Skull Icon
+    SetupButton("Zone Farming", "rbxassetid://10709791437")
+    SetupButton("Gamemodes", "rbxassetid://10709752906")
 end)
 
--- [ZONE FARMING ELEMENTS]
 EnemyDropdown = FarmingManagerSection:Dropdown({Title = "Select Enemy", Multi = false, Values = {}, Flag = "TargetEnemies_Cfg", Callback = function(selectedItem) if IsLoadingConfig then return end SaveZoneConfig(CurrentZoneName, selectedItem) end})
 FarmTabs:Add("Zone Farming", EnemyDropdown)
 
@@ -1076,7 +1086,6 @@ FarmTabs:Add("Zone Farming", RefreshBtn)
 local FarmToggle = FarmingManagerSection:Toggle({Title = "Auto Farm", Flag = "AutoFarm_Cfg", Callback = function(val) Config.AutoFarm = val; if val then task.spawn(LogicAutoFarm) end end})
 FarmTabs:Add("Zone Farming", FarmToggle)
 
--- [GAMEMODES ELEMENTS]
 local DgnDrop = FarmingManagerSection:Dropdown({Title = "Select Dungeon", Multi = true, Flag = "DungeonDiff_Cfg", Values = dungeonList, Callback = function(val) local t={}; for _, v in pairs(val) do table.insert(t, (type(v)=="table" and v.Value) or v) end; Config.TargetDungeon = t end})
 FarmTabs:Add("Gamemodes", DgnDrop)
 
@@ -1092,10 +1101,19 @@ local MaterialSection = GeneralTab:Section({ Title = "Inventory", Icon = "packag
 MaterialInfoUI = MaterialSection:Paragraph({ Title = "Materials", Desc = "Scanning..."})
 
 local RollSection = GeneralTab:Section({ Title = "Crate Roll", Icon = "refresh-cw", Opened = true })
-local rollToggleData = {{"Biju", "AutoRollBiju", LogicAutoRollBiju}, {"Race", "AutoRollRace", LogicAutoRollRace}, {"Sayajin", "AutoRollSayajin", LogicAutoRollSayajin}, {"Fruits", "AutoRollFruits", LogicAutoRollFruits}, {"Haki", "AutoRollHaki", LogicAutoRollHaki}, {"Breathing", "AutoRollBreathing", LogicAutoRollBreathing}}
+-- Updated Roll Toggles: Only sets Config boolean, Master Loop handles the rest
+local rollToggleData = {{"Biju", "AutoRollBiju"}, {"Race", "AutoRollRace"}, {"Sayajin", "AutoRollSayajin"}, {"Fruits", "AutoRollFruits"}, {"Haki", "AutoRollHaki"}, {"Breathing", "AutoRollBreathing"},{"Organization", "AutoRollOrganization"},{"Titan", "AutoRollTitan"}}
+
 for i, rollData in ipairs(rollToggleData) do
-    local rollType, configFlag, logicFunc = rollData[1], rollData[2], rollData[3]
-    local myToggle = RollSection:Toggle({Title = rollType, Flag = configFlag .. "_Cfg", Callback = function(val) Config[configFlag] = val; if val then task.spawn(logicFunc) end end})
+    local rollType, configFlag = rollData[1], rollData[2]
+    local myToggle = RollSection:Toggle({
+        Title = rollType, 
+        Flag = configFlag .. "_Cfg", 
+        Callback = function(val) 
+            Config[configFlag] = val 
+        end
+    })
+    
     if myToggle.ToggleFrame and myToggle.ToggleFrame.UIElements and myToggle.ToggleFrame.UIElements.Main then
         local toggleMain = myToggle.ToggleFrame.UIElements.Main; local sectionContent = toggleMain.Parent
         if not sectionContent:FindFirstChild("CustomGrid") then local oldLayout = sectionContent:FindFirstChildOfClass("UIListLayout"); if oldLayout then oldLayout:Destroy() end; local grid = Instance.new("UIGridLayout"); grid.Name = "CustomGrid"; grid.Parent = sectionContent; grid.SortOrder = Enum.SortOrder.LayoutOrder; grid.CellSize = UDim2.new(0.485, 0, 0, 45); grid.CellPadding = UDim2.new(0.02, 0, 0.02, 0) end
@@ -1159,17 +1177,15 @@ AvatarDropdown = AvatarSection:Dropdown({
     end
 })
 
--- IMMEDIATE LOAD & SELECT LOGIC
 repeat task.wait() until getgenv().PlayerData
 local InitialAvatarList = GetAvatarsWithStats()
 AvatarDropdown:Refresh(InitialAvatarList)
 
--- Auto Select Equipped Avatar on Start
 local StartEquipped = getgenv().PlayerData.Attributes and getgenv().PlayerData.Attributes.Avatar
 if StartEquipped then
     for _, item in ipairs(InitialAvatarList) do
         if item.Value == StartEquipped then
-            AvatarDropdown:Select(item.Title) -- WindUI usually selects by Title
+            AvatarDropdown:Select(item.Title)
             UpdatePreview(StartEquipped)
             break
         end
@@ -1177,12 +1193,8 @@ if StartEquipped then
 end
 
 
--- ============================================================================
--- [NEW: UPGRADE MENU (YEN) WITH CUSTOM TABS]
--- ============================================================================
 local YenTab = MainSection:Tab({ Title = "Upgrade", Icon = "chevrons-up" }) 
 
--- Helper to fetch Stats Icon from PlayerGui
 local function GetStatsIcon()
     local icon = "bar-chart" 
     pcall(function()
@@ -1193,59 +1205,54 @@ end
 
 local YenMainSection = YenTab:Section({ Title = "Stats Upgrade Manager", Icon = GetStatsIcon(), Opened = true })
 
--- Helper to fetch Yen Icon
 local function GetYenIcon()
-    local icon = "rbxassetid://109266060342925" -- fallback
+    local icon = "rbxassetid://109266060342925" 
     pcall(function()
         icon = game:GetService("Players").LocalPlayer.PlayerGui.Screen.Hud.left.yen.icon.Image
     end)
     return icon
 end
 
--- Initialize Button Tabs
--- Menggunakan "Token" sebagai pengganti "Stats & Misc"
+local function GetTrainerIcon()
+    local icon = "rbxassetid://10723415903" -- Fallback default
+    pcall(function()
+        icon = game:GetService("Players").LocalPlayer.PlayerGui.Screen.Hud.left.buttons.Arsenal.button.icon.Image
+    end)
+    return icon
+end
+
 local YenTabs = CreateTabButtons(YenMainSection, {"Yen", "Token", "Rank", "Trainer"}) 
 local upgradeOrder = {"Luck", "Damage", "Yen", "Mastery", "Critical"}
 
--- Inject Icon into the buttons & Fix Alignment (Left)
 task.spawn(function()
     task.wait(0.1)
     
     local function SetupButton(btnName, iconId)
         local btn = YenTabs.ButtonObjects[btnName]
         if btn then
-            -- 1. Fix Text Alignment (Left) and Position
             local lbl = btn:FindFirstChildOfClass("TextLabel")
             if lbl then
-                lbl.Size = UDim2.new(1, -25, 1, 0) -- Reduce size to make room for icon
-                lbl.Position = UDim2.new(0, 25, 0, 0) -- Offset text to the right
-                lbl.TextXAlignment = Enum.TextXAlignment.Left -- Align Left
+                lbl.Size = UDim2.new(1, -25, 1, 0)
+                lbl.Position = UDim2.new(0, 25, 0, 0)
+                lbl.TextXAlignment = Enum.TextXAlignment.Left
             end
 
-            -- 2. Add Icon (Left)
             local iconImg = Instance.new("ImageLabel")
             iconImg.Name = btnName.."Icon"
             iconImg.Parent = btn
             iconImg.Size = UDim2.fromOffset(20, 20)
-            iconImg.AnchorPoint = Vector2.new(0, 0.5) -- Anchor Left Center
-            iconImg.Position = UDim2.new(0, 0, 0.5, 0) -- Position Left Edge
+            iconImg.AnchorPoint = Vector2.new(0, 0.5)
+            iconImg.Position = UDim2.new(0, 0, 0.5, 0)
             iconImg.BackgroundTransparency = 1
             iconImg.Image = iconId
             iconImg.ScaleType = Enum.ScaleType.Fit
         end
     end
 
-    -- Setup Yen Button
     SetupButton("Yen", GetYenIcon())
-
-    -- Setup Token Button (dulu Stats & Misc)
     SetupButton("Token", "rbxassetid://124644932563791")
-
-    -- Setup Rank Button
     SetupButton("Rank", GetDynamicRankIcon())
-
-    -- Setup Trainer Button (NEW ICON)
-    SetupButton("Trainer", "rbxassetid://10723415903") -- Trainer/Dumbbell Icon
+    SetupButton("Trainer", GetTrainerIcon())
 end)
 
 for _, name in ipairs(upgradeOrder) do
@@ -1258,8 +1265,6 @@ for _, name in ipairs(upgradeOrder) do
     end
 end
 
--- DYNAMIC TOKEN UPGRADE TOGGLES
--- Automatically creates toggles based on the game config
 if TokenUpgradeConfig then
     for name, configData in pairs(TokenUpgradeConfig) do
         local myToggle = YenMainSection:Toggle({
@@ -1270,15 +1275,12 @@ if TokenUpgradeConfig then
     end
 end
 
--- RANK UP UI ELEMENTS (MOVED TO UPGRADE MANAGER)
 RankProgressUI = YenMainSection:Paragraph({ Title = "Rank Progress", Desc = "Waiting for data...", Image = GetDynamicRankIcon(), ImageSize = 40 })
 YenTabs:Add("Rank", RankProgressUI)
 
 local RankToggle = YenMainSection:Toggle({ Title = "Auto Rank Up", Flag = "AutoRankUp_Cfg", Callback = function(val) Config.AutoRankUp = val end })
 YenTabs:Add("Rank", RankToggle)
 
--- [NEW] TRAINER UPGRADE TOGGLES (Chance Upgrades)
--- Using Direct Module Logic
 for _, name in ipairs(ChanceUpgradeTypes) do
     local myToggle = YenMainSection:Toggle({
         Title = "Loading...", 
@@ -1334,7 +1336,7 @@ task.spawn(function()
     while not Window.Destroyed do
         task.wait(0.5)
         if IsTeleporting then continue end 
-        if os.time() - refreshTick > 3 then RefreshEnemyData(); refreshTick = os.time() end
+        if os.time() - refreshTick > 2 then RefreshEnemyData(); refreshTick = os.time() end
         local detectedZone = GetCurrentMapStatus()
         if detectedZone and detectedZone ~= "Unknown" and detectedZone ~= prevZone then
             prevZone = detectedZone; CurrentZoneName = detectedZone; Config.SelectedEnemy = nil 
@@ -1344,13 +1346,12 @@ task.spawn(function()
             task.wait(0.2)
             local savedEntry = Config.ZoneConfigurations[detectedZone]; local objectToSelect = nil
             if savedEntry then for _, currentMob in ipairs(freshEnemies) do if currentMob.Value == savedEntry.Value then objectToSelect = currentMob; Config.SelectedEnemy = currentMob.Value; break end end end
-            if objectToSelect then pcall(function() EnemyDropdown:Select(objectToSelect.Title) end) end
+            if objectToSelect then pcall(function() EnemyDropdown:Select(objectToSelect.Value) end) end
             task.wait(0.2); IsLoadingConfig = false
         end
     end
 end)
 
--- SMART REFRESH LOGIC VARIABLES
 local LastMorphCount = 0
 local LastEquippedAvatar = ""
 
@@ -1367,15 +1368,11 @@ task.spawn(function()
             end
             if Config.AutoRankUp and currentMastery >= req and currentRank < MaxRankCap then if Reliable then pcall(function() Reliable:FireServer("RankUp") end) end end
             
-            -- [SMART AVATAR REFRESH LOGIC]
-            -- 1. Count owned morphs
             local currentMorphCount = 0
             if Data.Morphs then for _ in pairs(Data.Morphs) do currentMorphCount = currentMorphCount + 1 end end
             
-            -- 2. Get equipped avatar
             local currentEquipped = Data.Attributes.Avatar or ""
 
-            -- 3. Check for changes (New avatar gained OR Avatar changed)
             if currentMorphCount ~= LastMorphCount or currentEquipped ~= LastEquippedAvatar then
                 LastMorphCount = currentMorphCount
                 LastEquippedAvatar = currentEquipped
@@ -1384,7 +1381,6 @@ task.spawn(function()
                 end
             end
 
-            -- AUTO YEN UPGRADE
             if Data.YenUpgrades then
                 local currentYen = Data.Attributes.Yen or 0
                 for name, configData in pairs(YenUpgradeConfig) do
@@ -1397,7 +1393,6 @@ task.spawn(function()
                 end
             end
 
-            -- AUTO TOKEN UPGRADE
             if Data.TokenUpgrades then
                 local currentToken = Data.Materials.UpgradeToken or 0 
                 for name, configData in pairs(TokenUpgradeConfig) do
@@ -1423,26 +1418,22 @@ task.spawn(function()
                 end
             end
 
-            -- AUTO TRAINER (CHANCE) UPGRADE
             if Data.CrateUpgrades then
                 for name, toggleObj in pairs(ChanceUpgradeToggleUI) do
                     local mod = ChanceModules[name]
                     if mod and toggleObj.SetTitle and toggleObj.SetDesc then
-                        -- Get Current Data
                         local lvl = Data.CrateUpgrades[name] or 0
                         local maxLvl = mod.MAX_LEVEL or 10
                         local cost = mod.GetCost(lvl)
-                        local chance = string.format("%.1f", mod.GetChance(lvl)) -- Format 1 decimal
+                        local chance = string.format("%.1f", mod.GetChance(lvl))
                         local tokenKey = mod.TOKEN_NAME or name.."Token"
                         local currentMaterial = Data.Materials[tokenKey] or 0
 
-                        -- Get Display Name from MaterialsModule
                         local displayName = tokenKey
                         if MaterialsModule[tokenKey] and MaterialsModule[tokenKey].Display then
                             displayName = MaterialsModule[tokenKey].Display
                         end
 
-                        -- Update UI
                         if lvl >= maxLvl then
                             toggleObj:SetTitle(name .. " [MAX]")
                             toggleObj:SetDesc("Max Level Reached")
@@ -1451,7 +1442,6 @@ task.spawn(function()
                             toggleObj:SetTitle(string.format("%s [%d/%d]", name, lvl, maxLvl))
                             toggleObj:SetDesc(string.format("Cost: %s | Chance: %s%%\n%s: %s", FormatNumber(cost), chance, displayName, FormatNumber(currentMaterial)))
                             
-                            -- Logic Auto
                             if Config["AutoChance_" .. name] then
                                 if currentMaterial >= cost then
                                     if Reliable then Reliable:FireServer("Chance Upgrade", {name}) end
@@ -1497,12 +1487,10 @@ task.spawn(function()
     end
 end)
 
--- [FIX: AUTO RESIZE FIX FOR ALL SECTIONS INCLUDING MAIN FEATURE]
--- Force Open all sections once to recalculate layout height
 local AllSections = {
-    CommunitySection, -- PlayerSection Removed
+    CommunitySection,
     MainSection, 
-    FarmingManagerSection, -- Updated to new section name
+    FarmingManagerSection,
     MaterialSection, RollSection, AvatarSection,
     YenMainSection,
     ConfigSection, SecuritySection
