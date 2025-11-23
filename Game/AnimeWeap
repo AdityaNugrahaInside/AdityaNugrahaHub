@@ -774,7 +774,7 @@ local function CreateTabButtons(section, tabNames)
             local TweenService = game:GetService("TweenService")
             local squircle = btn:FindFirstChild("Squircle")
             local outline = btn:FindFirstChild("SquircleOutline")
-            local lbl = btn:FindFirstChildOfClass("TextLabel")
+            local lbl = btn:FindFirstChild("TextLabel")
             if squircle then TweenService:Create(squircle, TweenInfo.new(0.2), {ImageTransparency = isSelected and 0 or 1}):Play() end
             if outline then TweenService:Create(outline, TweenInfo.new(0.2), {ImageTransparency = isSelected and 0.85 or 1}):Play() end
             if lbl then TweenService:Create(lbl, TweenInfo.new(0.2), {TextColor3 = isSelected and Color3.fromRGB(255,255,255) or Color3.fromRGB(180,180,180)}):Play() end
@@ -789,26 +789,27 @@ local function CreateTabButtons(section, tabNames)
 
     local btnWidth = 1 / #tabNames 
 
-    local CreatorRef = l and l.Creator
     for i, name in ipairs(tabNames) do
-        local btn = (CreatorRef and CreatorRef.New or Instance.new)("TextButton", {
-            Name = name .. "_Btn",
-            Size = UDim2.new(btnWidth, -4, 1, 0),
-            BackgroundTransparency = 1,
-            AutoButtonColor = false,
-            Text = "",
-        })
+        local btn = Instance.new("TextButton")
+        btn.Name = name .. "_Btn"
+        btn.Parent = ButtonContainer
+        btn.Size = UDim2.new(btnWidth, -4, 1, 0)
+        btn.BackgroundTransparency = 1
+        btn.AutoButtonColor = false
+        btn.Text = ""
 
-        if not btn.Parent then btn.Parent = ButtonContainer end
-
+        local CreatorRef = l and l.Creator
         local Radius = 10
-        local squircle = CreatorRef and CreatorRef.NewRoundFrame(Radius, "Squircle", {
+        local bg = CreatorRef and CreatorRef.NewRoundFrame(Radius, "Squircle", {
             ThemeTag = { ImageColor3 = "Button" },
             Size = UDim2.new(1,0,1,0),
             Name = "Squircle",
             ImageTransparency = 1
         }) or Instance.new("Frame")
-        squircle.Parent = btn
+        bg.Name = "Squircle"
+        bg.Size = UDim2.new(1,0,1,0)
+        bg.BackgroundTransparency = 1
+        bg.Parent = btn
 
         local outline = CreatorRef and CreatorRef.NewRoundFrame(Radius, "SquircleOutline", {
             ThemeTag = { ImageColor3 = "Outline" },
@@ -830,20 +831,21 @@ local function CreateTabButtons(section, tabNames)
                 })
             })
         }) or Instance.new("Frame")
+        outline.Name = "SquircleOutline"
+        outline.Size = UDim2.new(1,0,1,0)
+        outline.BackgroundTransparency = 1
         outline.Parent = btn
 
-        local lbl = (CreatorRef and CreatorRef.New or Instance.new)("TextLabel", {
-            Name = "TextLabel",
-            Size = UDim2.new(1,0,1,0),
-            BackgroundTransparency = 1,
-            Text = name,
-            FontFace = Font.new(CreatorRef and CreatorRef.Font or "rbxassetid://12187365364", Enum.FontWeight.SemiBold),
-            TextSize = 14,
-            TextColor3 = Color3.fromRGB(180, 180, 180),
-            RichText = true,
-        })
-        lbl.ZIndex = 5
+        local lbl = Instance.new("TextLabel")
+        lbl.Name = "TextLabel"
         lbl.Parent = btn
+        lbl.Size = UDim2.new(1,0,1,0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = name
+        lbl.Font = Enum.Font.GothamSemibold
+        lbl.TextSize = 14
+        lbl.TextColor3 = Color3.fromRGB(180, 180, 180)
+        lbl.ZIndex = 5
 
         btn.MouseButton1Click:Connect(function() UpdateVisibility(name) end)
         TabSystem.ButtonObjects[name] = btn
@@ -1272,7 +1274,6 @@ task.spawn(function()
                 lbl.Size = UDim2.new(1, -25, 1, 0)
                 lbl.Position = UDim2.new(0, 25, 0, 0)
                 lbl.TextXAlignment = Enum.TextXAlignment.Left
-                lbl.ZIndex = 5
             end
 
             local iconImg = Instance.new("ImageLabel")
@@ -1284,7 +1285,6 @@ task.spawn(function()
             iconImg.BackgroundTransparency = 1
             iconImg.Image = iconId
             iconImg.ScaleType = Enum.ScaleType.Fit
-            iconImg.ZIndex = 5
         end
     end
 
