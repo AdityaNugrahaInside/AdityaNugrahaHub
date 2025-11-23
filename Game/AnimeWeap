@@ -1255,19 +1255,16 @@ task.spawn(function()
     SetupButton("Trainer", GetTrainerIcon())
 end)
 
-local _yenGroup
-local _yenCount = 0
+local YenGroup = YenMainSection:Group({})
 for _, name in ipairs(upgradeOrder) do
     if YenUpgradeConfig[name] then
-        if _yenCount % 2 == 0 then _yenGroup = YenMainSection:Group({}) end
-        local myToggle = _yenGroup:Toggle({
+        local myToggle = YenGroup:Toggle({
             Title = name,
             Flag = "AutoYen_" .. name,
             Callback = function(val) Config["AutoYen_" .. name] = val end
         })
         YenUpgradeToggleUI[name] = myToggle
         YenTabs:Add("Yen", myToggle)
-        _yenCount = _yenCount + 1
     end
 end
 
@@ -1275,18 +1272,15 @@ if TokenUpgradeConfig then
     local _tokenNames = {}
     for name, _ in pairs(TokenUpgradeConfig) do table.insert(_tokenNames, name) end
     table.sort(_tokenNames)
-    local _tokenGroup
-    local _tokenCount = 0
+    local TokenGroup = YenMainSection:Group({})
     for _, name in ipairs(_tokenNames) do
-        if _tokenCount % 2 == 0 then _tokenGroup = YenMainSection:Group({}) end
-        local myToggle = _tokenGroup:Toggle({
+        local myToggle = TokenGroup:Toggle({
             Title = name,
             Flag = "AutoToken_" .. name,
             Callback = function(val) Config["AutoToken_" .. name] = val end
         })
         TokenUpgradeToggleUI[name] = myToggle
         YenTabs:Add("Token", myToggle)
-        _tokenCount = _tokenCount + 1
     end
 end
 
@@ -1296,11 +1290,9 @@ YenTabs:Add("Rank", RankProgressUI)
 local RankToggle = YenMainSection:Toggle({ Title = "Auto Rank Up", Flag = "AutoRankUp_Cfg", Callback = function(val) Config.AutoRankUp = val end })
 YenTabs:Add("Rank", RankToggle)
 
-local _trainerGroup
-local _trainerCount = 0
+local TrainerGroup = YenMainSection:Group({})
 for _, name in ipairs(ChanceUpgradeTypes) do
-    if _trainerCount % 2 == 0 then _trainerGroup = YenMainSection:Group({}) end
-    local myToggle = _trainerGroup:Toggle({
+    local myToggle = TrainerGroup:Toggle({
         Title = "Loading...",
         Flag = "AutoChance_" .. name,
         Callback = function(val)
@@ -1309,7 +1301,6 @@ for _, name in ipairs(ChanceUpgradeTypes) do
     })
     ChanceUpgradeToggleUI[name] = myToggle
     YenTabs:Add("Trainer", myToggle)
-    _trainerCount = _trainerCount + 1
 end
 
 
