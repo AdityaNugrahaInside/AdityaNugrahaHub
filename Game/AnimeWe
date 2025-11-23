@@ -879,7 +879,8 @@ local function CreateTabButtons(section, tabNames, iconIds)
         local _, btn = TabsGroup:Button({
             Title = name,
             Icon = icon,
-            Justify = "Center",
+            Justify = "between",
+            IconAlign = "left",
             Callback = function()
                 UpdateVisibility(name);
             end
@@ -1596,7 +1597,7 @@ local function GetTrainerIcon()
 	return icon;
 end;
 local YenTabs = CreateTabButtons(YenMainSection, {
-	"YenSS",
+	"Yen",
 	"Token",
 	"Rank",
 	"Trainer"
@@ -1616,21 +1617,21 @@ local upgradeOrder = {
 local _yenGroup;
 local _yenCount = 0;
 for _, name in ipairs(upgradeOrder) do
-	if YenUpgradeConfig[name] then
-		if _yenCount % 2 == 0 then
-			_yenGroup = YenMainSection:Group({});
-		end;
-		local myToggle = _yenGroup:Toggle({
-			Title = name,
-			Flag = "AutoYen_" .. name,
-			Callback = function(val)
-				Config["AutoYen_" .. name] = val;
-			end
-		});
-		YenUpgradeToggleUI[name] = myToggle;
-		YenTabs:Add("Yen", myToggle);
-		_yenCount = _yenCount + 1;
-	end;
+    if YenUpgradeConfig[name] then
+        if _yenCount % 2 == 0 then
+            _yenGroup = YenMainSection:Group({});
+            YenTabs:Add("Yen", _yenGroup);
+        end;
+        local myToggle = _yenGroup:Toggle({
+            Title = name,
+            Flag = "AutoYen_" .. name,
+            Callback = function(val)
+                Config["AutoYen_" .. name] = val;
+            end
+        });
+        YenUpgradeToggleUI[name] = myToggle;
+        _yenCount = _yenCount + 1;
+    end;
 end;
 if TokenUpgradeConfig then
 	local _tokenNames = {};
@@ -1641,20 +1642,20 @@ if TokenUpgradeConfig then
 	local _tokenGroup;
 	local _tokenCount = 0;
 	for _, name in ipairs(_tokenNames) do
-		if _tokenCount % 2 == 0 then
-			_tokenGroup = YenMainSection:Group({});
-		end;
-		local myToggle = _tokenGroup:Toggle({
-			Title = name,
-			Flag = "AutoToken_" .. name,
-			Callback = function(val)
-				Config["AutoToken_" .. name] = val;
-			end
-		});
-		TokenUpgradeToggleUI[name] = myToggle;
-		YenTabs:Add("Token", myToggle);
-		_tokenCount = _tokenCount + 1;
-	end;
+        if _tokenCount % 2 == 0 then
+            _tokenGroup = YenMainSection:Group({});
+            YenTabs:Add("Token", _tokenGroup);
+        end;
+        local myToggle = _tokenGroup:Toggle({
+            Title = name,
+            Flag = "AutoToken_" .. name,
+            Callback = function(val)
+                Config["AutoToken_" .. name] = val;
+            end
+        });
+        TokenUpgradeToggleUI[name] = myToggle;
+        _tokenCount = _tokenCount + 1;
+    end;
 end;
 RankProgressUI = YenMainSection:Paragraph({
 	Title = "Rank Progress",
@@ -1674,19 +1675,19 @@ YenTabs:Add("Rank", RankToggle);
 local _trainerGroup;
 local _trainerCount = 0;
 for _, name in ipairs(ChanceUpgradeTypes) do
-	if _trainerCount % 2 == 0 then
-		_trainerGroup = YenMainSection:Group({});
-	end;
-	local myToggle = _trainerGroup:Toggle({
-		Title = "Loading...",
-		Flag = "AutoChance_" .. name,
-		Callback = function(val)
-			Config["AutoChance_" .. name] = val;
-		end
-	});
-	ChanceUpgradeToggleUI[name] = myToggle;
-	YenTabs:Add("Trainer", myToggle);
-	_trainerCount = _trainerCount + 1;
+    if _trainerCount % 2 == 0 then
+        _trainerGroup = YenMainSection:Group({});
+        YenTabs:Add("Trainer", _trainerGroup);
+    end;
+    local myToggle = _trainerGroup:Toggle({
+        Title = "Loading...",
+        Flag = "AutoChance_" .. name,
+        Callback = function(val)
+            Config["AutoChance_" .. name] = val;
+        end
+    });
+    ChanceUpgradeToggleUI[name] = myToggle;
+    _trainerCount = _trainerCount + 1;
 end;
 local SettingsTab = Window:Tab({
 	Title = "Settings",
