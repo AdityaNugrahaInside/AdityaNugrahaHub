@@ -816,6 +816,13 @@ local Window = l:CreateWindow({
 		SaveKey = true
 	}
 });
+do
+	Window:Tag({
+		Title = "v" .. ANUI.Version,
+		Icon = "github",
+		Color = Color3.fromHex("#ff0000ff")
+	});
+end;
 if not isfile(ExpiryFile) then
 	writefile(ExpiryFile, tostring(os.time() + 86400));
 end;
