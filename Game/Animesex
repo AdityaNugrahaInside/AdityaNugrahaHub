@@ -614,7 +614,7 @@ end;
 local dungeonList, dungeonDB, raidList, raidDB = {}, {}, {}, {};
 local function LoadDungeonData()
 	local success, module = pcall(function()
-		return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Gamemodes.Dungeon);
+		return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Dungeon);
 	end);
 	if success and module and module.PHASES then
 		dungeonList, dungeonDB = {}, {};
@@ -635,7 +635,7 @@ local function LoadDungeonData()
 end;
 local function LoadRaidData()
 	local success, module = pcall(function()
-		return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Gamemodes.Raid);
+		return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Raid);
 	end);
 	if success and module and module.PHASES then
 		raidList, raidDB = {}, {};
