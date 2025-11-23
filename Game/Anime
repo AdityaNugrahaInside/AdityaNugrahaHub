@@ -869,8 +869,11 @@ local function CreateTabButtons(section, tabNames, iconIds)
             local isSelected = name == selectedTab;
             local target = btn.ButtonFrame and btn.ButtonFrame.UIElements and btn.ButtonFrame.UIElements.Main;
             if target then
+                local baseColor = btn._defaultColor or target.ImageColor3;
+                local selColor = Color3.fromRGB(0, 255, 170);
                 (game:GetService("TweenService"):Create(target, TweenInfo.new(0.2), {
-                    ImageTransparency = isSelected and 0.93 or 1
+                    ImageTransparency = isSelected and 0.93 or 1,
+                    ImageColor3 = isSelected and selColor or baseColor
                 })):Play();
             end;
         end;
@@ -892,6 +895,9 @@ local function CreateTabButtons(section, tabNames, iconIds)
                 UpdateVisibility(name);
             end
         });
+        if btn and btn.ButtonFrame and btn.ButtonFrame.UIElements and btn.ButtonFrame.UIElements.Main then
+            btn._defaultColor = btn.ButtonFrame.UIElements.Main.ImageColor3;
+        end;
         TabSystem.ButtonObjects[name] = btn;
     end;
     function TabSystem:Add(tabName, elementObject)
