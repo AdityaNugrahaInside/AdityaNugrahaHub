@@ -517,7 +517,7 @@ local function GetOnlineKeys()
 end
 
 local function GetDynamicRankIcon()
-    local iconId = "rbxassetid://109266060342925" -- Fallback
+    local iconId = "rbxassetid://84366761557806" -- Fallback
     pcall(function()
         local part = Workspace.Billboards.Machines.RankUp.icon
         if part and part.Image then iconId = part.Image end
@@ -526,7 +526,7 @@ local function GetDynamicRankIcon()
 end
 
 local function GetRollIconAsset(rollType)
-    local fallback = "rbxassetid://109266060342925"
+    local fallback = "rbxassetid://84366761557806"
     local assetId = ""
     pcall(function()
         local machine = Workspace.Billboards.Machines:FindFirstChild(rollType)
@@ -572,7 +572,7 @@ local function LoadRollData(rollType)
     if success and module then
         RollConfigs[rollType] = {Cost = module.Cost or 1, MaterialKey = module.Material or rollType .. "Token", ImageId = module.ImageId}
     else
-        RollConfigs[rollType] = {Cost = 1, MaterialKey = rollType .. "Token", ImageId = "109266060342925"}
+        RollConfigs[rollType] = {Cost = 1, MaterialKey = rollType .. "Token", ImageId = "84366761557806"}
     end
 end
 LoadDungeonData(); LoadRaidData()
@@ -700,7 +700,7 @@ local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/
 
 local Window = l:CreateWindow({
     Title = "AN Hub - Anime Weapons",
-    Icon = "rbxassetid://109266060342925",
+    Icon = "rbxassetid://84366761557806",
     Author = "Aditya Nugraha",
     Folder = FolderPath,
     Size = UDim2.fromOffset(580, 460),
@@ -1003,7 +1003,7 @@ local s, tUrl = pcall(function() return Players:GetUserThumbnailAsync(LocalPlaye
 local PlayerParagraph = InfoTab:Paragraph({
     Title = LocalPlayer.DisplayName,
     Desc = "User ID: " .. tostring(LocalPlayer.UserId) .. "\nKey Valid: Verifying...",
-    Image = s and tUrl or "rbxassetid://109266060342925",
+    Image = s and tUrl or "rbxassetid://84366761557806",
     ImageSize = 48,
     Buttons = {{Title = "Copy HWID", Icon = "copy", Callback = function() setclipboard(tostring(gethwid and gethwid() or LocalPlayer.UserId)) end}}
 })
@@ -1041,7 +1041,7 @@ task.spawn(function()
 end)
 
 local CommunitySection = InfoTab:Section({ Title = "Community", Icon = "users", Opened = true })
-local DiscordInfo = InfoTab:Paragraph({Title = "Loading...", Desc = "...", Image = "rbxassetid://109266060342925", ImageSize = 42, Buttons = {{Title = "Copy Discord", Icon = "copy", Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") end}}})
+local DiscordInfo = InfoTab:Paragraph({Title = "Loading...", Desc = "...", Image = "rbxassetid://84366761557806", ImageSize = 42, Buttons = {{Title = "Copy Discord", Icon = "copy", Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") end}}})
 task.spawn(function() local API = "https://discord.com/api/v10/invites/cy6uMRmeZ?with_counts=true&with_expiration=true"; local s, r = pcall(function() return HttpService:JSONDecode(l.Creator.Request({Url=API, Method="GET"}).Body) end); if s and r and r.guild then DiscordInfo:SetTitle(r.guild.name); DiscordInfo:SetDesc('Members: '..r.approximate_member_count..'\nOnline: '..r.approximate_presence_count) else DiscordInfo:SetTitle("Discord Error"); DiscordInfo:SetDesc("Failed to fetch info.") end end)
 
 local MainSection = Window:Section({ Title = "Main Features", Icon = "sword", Opened = true })
@@ -1206,7 +1206,7 @@ end
 local YenMainSection = YenTab:Section({ Title = "Stats Upgrade Manager", Icon = GetStatsIcon(), Opened = true })
 
 local function GetYenIcon()
-    local icon = "rbxassetid://109266060342925" 
+    local icon = "rbxassetid://84366761557806" 
     pcall(function()
         icon = game:GetService("Players").LocalPlayer.PlayerGui.Screen.Hud.left.yen.icon.Image
     end)
