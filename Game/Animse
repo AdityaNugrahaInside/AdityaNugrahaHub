@@ -914,7 +914,7 @@ local function CreateTabButtons(section, tabNames, iconIds)
         end;
     end;
     UpdateVisibility(tabNames[1]);
-    section:Divider();
+    -- section:Divider();
     return TabSystem;
 end;
 local function GetHRP()
@@ -1610,7 +1610,7 @@ local function GetTrainerIcon()
 	return icon;
 end;
 local YenTabs = CreateTabButtons(YenMainSection, {
-	"Yen",
+	"YenSS",
 	"Token",
 	"Rank",
 	"Trainer"
