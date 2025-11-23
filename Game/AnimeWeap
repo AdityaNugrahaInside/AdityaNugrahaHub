@@ -1260,39 +1260,8 @@ local function GetTrainerIcon()
     return icon
 end
 
-local YenTabs = CreateTabButtons(YenMainSection, {"Yencd", "Token", "Rank", "Trainer"})
+local YenTabs = CreateTabButtons(YenMainSection, {"Yen", "Token", "Rank", "Trainer"})
 local upgradeOrder = {"Luck", "Damage", "Yen", "Mastery", "Critical"}
-
-task.spawn(function()
-    task.wait(0.1)
-    
-    local function SetupButton(btnName, iconId)
-        local btn = YenTabs.ButtonObjects[btnName]
-        if btn then
-            local lbl = btn:FindFirstChildOfClass("TextLabel")
-            if lbl then
-                lbl.Size = UDim2.new(1, -25, 1, 0)
-                lbl.Position = UDim2.new(0, 25, 0, 0)
-                lbl.TextXAlignment = Enum.TextXAlignment.Left
-            end
-
-            local iconImg = Instance.new("ImageLabel")
-            iconImg.Name = btnName.."Icon"
-            iconImg.Parent = btn
-            iconImg.Size = UDim2.fromOffset(20, 20)
-            iconImg.AnchorPoint = Vector2.new(0, 0.5)
-            iconImg.Position = UDim2.new(0, 0, 0.5, 0)
-            iconImg.BackgroundTransparency = 1
-            iconImg.Image = iconId
-            iconImg.ScaleType = Enum.ScaleType.Fit
-        end
-    end
-
-    SetupButton("Yen", GetYenIcon())
-    SetupButton("Token", "rbxassetid://124644932563791")
-    SetupButton("Rank", GetDynamicRankIcon())
-    SetupButton("Trainer", GetTrainerIcon())
-end)
 
 local _yenGroup
 local _yenCount = 0
