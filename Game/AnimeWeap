@@ -847,7 +847,7 @@ local function CreateTabButtons(section, tabNames)
         lbl.TextColor3 = Color3.fromRGB(180, 180, 180)
         lbl.ZIndex = 5
 
-        btn.MouseButton1Click:Connect(function() UpdateVisibility(name) end)
+        btn.Activated:Connect(function() UpdateVisibility(name) end)
         TabSystem.ButtonObjects[name] = btn
     end
 
@@ -1260,7 +1260,7 @@ local function GetTrainerIcon()
     return icon
 end
 
-local YenTabs = CreateTabButtons(YenMainSection, {"Yenss", "Token", "Rank", "Trainer"})
+local YenTabs = CreateTabButtons(YenMainSection, {"Yencd", "Token", "Rank", "Trainer"})
 local upgradeOrder = {"Luck", "Damage", "Yen", "Mastery", "Critical"}
 
 task.spawn(function()
