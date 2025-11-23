@@ -370,15 +370,16 @@ local function ScanPlayerData()
 end
 task.spawn(ScanPlayerData)
 
+
 local function InitAutoReconnectBypass()
     local targetFound = false
     local function activateBypass(func, uiObject, numIndex)
         task.spawn(function()
             while true do
-                if func then debug.setupvalue(func, numIndex, 0) end
+                debug.setupvalue(func, numIndex, 0)
                 if uiObject then
                     uiObject.Visible = true
-                    uiObject.Text = "ANHub Bypass Reconnect"
+                    uiObject.Text = "ANHub Bypass Reconnect V2"
                     uiObject.TextColor3 = Color3.fromRGB(0, 255, 100)
                 end
                 task.wait(0.1)
@@ -409,6 +410,12 @@ local function InitAutoReconnectBypass()
             if info.source and string.find(info.source, "AutoReconnect.c") then deepScan(func, "Main") end
         end
     end
+    local VirtualUser = game:GetService('VirtualUser')
+
+    game:GetService('Players').LocalPlayer.Idled:Connect(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end)
 end
 task.spawn(InitAutoReconnectBypass)
 
