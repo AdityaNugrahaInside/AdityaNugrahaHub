@@ -1255,26 +1255,38 @@ task.spawn(function()
     SetupButton("Trainer", GetTrainerIcon())
 end)
 
-local YenToggleGroup = YenMainSection:Group({})
+local _yenGroup
+local _yenCount = 0
 for _, name in ipairs(upgradeOrder) do
     if YenUpgradeConfig[name] then
-        local myToggle = YenToggleGroup:Toggle({
+        if _yenCount % 2 == 0 then _yenGroup = YenMainSection:Group({}) end
+        local myToggle = _yenGroup:Toggle({
             Title = name,
             Flag = "AutoYen_" .. name,
             Callback = function(val) Config["AutoYen_" .. name] = val end
         })
         YenUpgradeToggleUI[name] = myToggle
         YenTabs:Add("Yen", myToggle)
+        _yenCount = _yenCount + 1
     end
 end
 
 if TokenUpgradeConfig then
-    for name, configData in pairs(TokenUpgradeConfig) do
-        local myToggle = YenMainSection:Toggle({
-            Title = name, Flag = "AutoToken_" .. name, Callback = function(val) Config["AutoToken_" .. name] = val end
+    local _tokenNames = {}
+    for name, _ in pairs(TokenUpgradeConfig) do table.insert(_tokenNames, name) end
+    table.sort(_tokenNames)
+    local _tokenGroup
+    local _tokenCount = 0
+    for _, name in ipairs(_tokenNames) do
+        if _tokenCount % 2 == 0 then _tokenGroup = YenMainSection:Group({}) end
+        local myToggle = _tokenGroup:Toggle({
+            Title = name,
+            Flag = "AutoToken_" .. name,
+            Callback = function(val) Config["AutoToken_" .. name] = val end
         })
         TokenUpgradeToggleUI[name] = myToggle
         YenTabs:Add("Token", myToggle)
+        _tokenCount = _tokenCount + 1
     end
 end
 
