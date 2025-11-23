@@ -1,6 +1,8 @@
 repeat
 	task.wait();
 until game:IsLoaded();
+
+-- [LOADING SCREEN DARI FILE 2]
 local function PlayElegantLoading()
 	local TweenService = game:GetService("TweenService");
 	local Lighting = game:GetService("Lighting");
@@ -1344,6 +1346,10 @@ local MainSection = Window:Section({
 	Icon = "sword",
 	Opened = true
 });
+
+-- ============================================================================
+-- [FARMING MANAGER FROM FILE 1]
+-- ============================================================================
 local FarmTab = MainSection:Tab({
 	Title = "Farming",
 	Icon = "swords"
@@ -1356,10 +1362,36 @@ local FarmingManagerSection = FarmTab:Section({
 local FarmTabs = CreateTabButtons(FarmingManagerSection, {
     "Zone Farming",
     "Gamemodes"
-}, {
-    "rbxassetid://10709791437",
-    "rbxassetid://10709752906"
-});
+})
+
+-- Setup Icons for Farm Tabs
+task.spawn(function()
+    task.wait(0.1)
+    local function SetupButton(btnName, iconId)
+        local btn = FarmTabs.ButtonObjects[btnName]
+        if btn then
+            local lbl = btn:FindFirstChildOfClass("TextLabel")
+            if lbl then
+                lbl.Size = UDim2.new(1, -25, 1, 0)
+                lbl.Position = UDim2.new(0, 25, 0, 0)
+                lbl.TextXAlignment = Enum.TextXAlignment.Left
+            end
+
+            local iconImg = Instance.new("ImageLabel")
+            iconImg.Name = btnName.."Icon"
+            iconImg.Parent = btn
+            iconImg.Size = UDim2.fromOffset(20, 20)
+            iconImg.AnchorPoint = Vector2.new(0, 0.5)
+            iconImg.Position = UDim2.new(0, 0, 0.5, 0)
+            iconImg.BackgroundTransparency = 1
+            iconImg.Image = iconId
+            iconImg.ScaleType = Enum.ScaleType.Fit
+        end
+    end
+    SetupButton("Zone Farming", "rbxassetid://10709791437")
+    SetupButton("Gamemodes", "rbxassetid://10709752906")
+end)
+
 EnemyDropdown = FarmingManagerSection:Dropdown({
 	Title = "Select Enemy",
 	Multi = false,
@@ -1431,6 +1463,10 @@ local ModeToggle = FarmingManagerSection:Toggle({
 	end
 });
 FarmTabs:Add("Gamemodes", ModeToggle);
+
+-- ============================================================================
+-- [GENERAL TAB & REST OF FILE 2]
+-- ============================================================================
 local GeneralTab = MainSection:Tab({
 	Title = "General",
 	Icon = "settings"
@@ -1603,6 +1639,10 @@ if StartEquipped then
 		end;
 	end;
 end;
+
+-- ============================================================================
+-- [STATS UPGRADE MANAGER FROM FILE 1]
+-- ============================================================================
 local YenTab = MainSection:Tab({
 	Title = "Upgrade",
 	Icon = "chevrons-up"
@@ -1704,6 +1744,10 @@ for _, name in ipairs(ChanceUpgradeTypes) do
     ChanceUpgradeToggleUI[name] = myToggle
     YenTabs:Add("Trainer", myToggle)
 end
+
+-- ============================================================================
+-- [SETTINGS TAB & REST OF FILE 2]
+-- ============================================================================
 local SettingsTab = Window:Tab({
 	Title = "Settings",
 	Icon = "settings-2"
