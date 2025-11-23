@@ -1610,7 +1610,7 @@ local function GetTrainerIcon()
 	return icon;
 end;
 local YenTabs = CreateTabButtons(YenMainSection, {
-	"YenSS",
+	"Yen",
 	"Token",
 	"Rank",
 	"Trainer"
