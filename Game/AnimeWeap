@@ -1260,7 +1260,7 @@ local function GetTrainerIcon()
     return icon
 end
 
-local YenTabs = CreateTabButtons(YenMainSection, {"Yen", "Token", "Rank", "Trainer"})
+local YenTabs = CreateTabButtons(YenMainSection, {"Yenss", "Token", "Rank", "Trainer"})
 local upgradeOrder = {"Luck", "Damage", "Yen", "Mastery", "Critical"}
 
 task.spawn(function()
