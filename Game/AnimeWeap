@@ -771,10 +771,13 @@ local function CreateTabButtons(section, tabNames)
         end
         for name, btn in pairs(TabSystem.ButtonObjects) do
             local isSelected = (name == selectedTab)
-            local targetColor = isSelected and Color3.fromRGB(60, 200, 120) or Color3.fromRGB(45, 45, 45)
-            local targetText = isSelected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(180, 180, 180)
-            game:GetService("TweenService"):Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = targetColor}):Play()
-            game:GetService("TweenService"):Create(btn.TextLabel, TweenInfo.new(0.2), {TextColor3 = targetText}):Play()
+            local TweenService = game:GetService("TweenService")
+            local squircle = btn:FindFirstChild("Squircle")
+            local outline = btn:FindFirstChild("SquircleOutline")
+            local lbl = btn:FindFirstChildOfClass("TextLabel")
+            if squircle then TweenService:Create(squircle, TweenInfo.new(0.2), {ImageTransparency = isSelected and 0 or 1}):Play() end
+            if outline then TweenService:Create(outline, TweenInfo.new(0.2), {ImageTransparency = isSelected and 0.85 or 1}):Play() end
+            if lbl then TweenService:Create(lbl, TweenInfo.new(0.2), {TextColor3 = isSelected and Color3.fromRGB(255,255,255) or Color3.fromRGB(180,180,180)}):Play() end
         end
         task.spawn(function()
             task.wait(0.05)
@@ -786,27 +789,61 @@ local function CreateTabButtons(section, tabNames)
 
     local btnWidth = 1 / #tabNames 
 
+    local CreatorRef = l and l.Creator
     for i, name in ipairs(tabNames) do
-        local btn = Instance.new("TextButton")
-        btn.Name = name .. "_Btn"
-        btn.Parent = ButtonContainer
-        btn.Size = UDim2.new(btnWidth, -4, 1, 0)
-        btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-        btn.AutoButtonColor = true
-        btn.Text = ""
-        
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 6)
-        corner.Parent = btn
+        local btn = (CreatorRef and CreatorRef.New or Instance.new)("TextButton", {
+            Name = name .. "_Btn",
+            Size = UDim2.new(btnWidth, -4, 1, 0),
+            BackgroundTransparency = 1,
+            AutoButtonColor = false,
+            Text = "",
+        })
 
-        local lbl = Instance.new("TextLabel")
+        if not btn.Parent then btn.Parent = ButtonContainer end
+
+        local Radius = 10
+        local squircle = CreatorRef and CreatorRef.NewRoundFrame(Radius, "Squircle", {
+            ThemeTag = { ImageColor3 = "Button" },
+            Size = UDim2.new(1,0,1,0),
+            Name = "Squircle",
+            ImageTransparency = 1
+        }) or Instance.new("Frame")
+        squircle.Parent = btn
+
+        local outline = CreatorRef and CreatorRef.NewRoundFrame(Radius, "SquircleOutline", {
+            ThemeTag = { ImageColor3 = "Outline" },
+            Size = UDim2.new(1,0,1,0),
+            Name = "SquircleOutline",
+            ImageTransparency = 1
+        }, {
+            CreatorRef and CreatorRef.New("UIGradient", {
+                Rotation = 70,
+                Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 255, 255)),
+                    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
+                    ColorSequenceKeypoint.new(1.0, Color3.fromRGB(255, 255, 255)),
+                }),
+                Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0.0, 0.1),
+                    NumberSequenceKeypoint.new(0.5, 1),
+                    NumberSequenceKeypoint.new(1.0, 0.1),
+                })
+            })
+        }) or Instance.new("Frame")
+        outline.Parent = btn
+
+        local lbl = (CreatorRef and CreatorRef.New or Instance.new)("TextLabel", {
+            Name = "TextLabel",
+            Size = UDim2.new(1,0,1,0),
+            BackgroundTransparency = 1,
+            Text = name,
+            FontFace = Font.new(CreatorRef and CreatorRef.Font or "rbxassetid://12187365364", Enum.FontWeight.SemiBold),
+            TextSize = 14,
+            TextColor3 = Color3.fromRGB(180, 180, 180),
+            RichText = true,
+        })
+        lbl.ZIndex = 5
         lbl.Parent = btn
-        lbl.Size = UDim2.new(1,0,1,0)
-        lbl.BackgroundTransparency = 1
-        lbl.Text = name
-        lbl.Font = Enum.Font.GothamBold
-        lbl.TextSize = 12
-        lbl.TextColor3 = Color3.fromRGB(180, 180, 180)
 
         btn.MouseButton1Click:Connect(function() UpdateVisibility(name) end)
         TabSystem.ButtonObjects[name] = btn
@@ -1061,6 +1098,7 @@ task.spawn(function()
                 lbl.Size = UDim2.new(1, -25, 1, 0)
                 lbl.Position = UDim2.new(0, 25, 0, 0)
                 lbl.TextXAlignment = Enum.TextXAlignment.Left
+                lbl.ZIndex = 5
             end
             local iconImg = Instance.new("ImageLabel")
             iconImg.Name = btnName.."Icon"
@@ -1071,6 +1109,7 @@ task.spawn(function()
             iconImg.BackgroundTransparency = 1
             iconImg.Image = iconId
             iconImg.ScaleType = Enum.ScaleType.Fit
+            iconImg.ZIndex = 5
         end
     end
     SetupButton("Zone Farming", "rbxassetid://10709791437")
@@ -1221,13 +1260,41 @@ local function GetTrainerIcon()
     return icon
 end
 
-local UpgradeButtonsGroup = YenMainSection:Group({})
+local YenTabs = CreateTabButtons(YenMainSection, {"Yen", "Token", "Rank", "Trainer"})
 local upgradeOrder = {"Luck", "Damage", "Yen", "Mastery", "Critical"}
 
-UpgradeButtonsGroup:Button({ Title = "Yen", Icon = GetYenIcon(), Callback = function() end })
-UpgradeButtonsGroup:Button({ Title = "Token", Icon = "rbxassetid://124644932563791", Callback = function() end })
-UpgradeButtonsGroup:Button({ Title = "Rank", Icon = GetDynamicRankIcon(), Callback = function() end })
-UpgradeButtonsGroup:Button({ Title = "Trainer", Icon = GetTrainerIcon(), Callback = function() end })
+task.spawn(function()
+    task.wait(0.1)
+    
+    local function SetupButton(btnName, iconId)
+        local btn = YenTabs.ButtonObjects[btnName]
+        if btn then
+            local lbl = btn:FindFirstChildOfClass("TextLabel")
+            if lbl then
+                lbl.Size = UDim2.new(1, -25, 1, 0)
+                lbl.Position = UDim2.new(0, 25, 0, 0)
+                lbl.TextXAlignment = Enum.TextXAlignment.Left
+                lbl.ZIndex = 5
+            end
+
+            local iconImg = Instance.new("ImageLabel")
+            iconImg.Name = btnName.."Icon"
+            iconImg.Parent = btn
+            iconImg.Size = UDim2.fromOffset(20, 20)
+            iconImg.AnchorPoint = Vector2.new(0, 0.5)
+            iconImg.Position = UDim2.new(0, 0, 0.5, 0)
+            iconImg.BackgroundTransparency = 1
+            iconImg.Image = iconId
+            iconImg.ScaleType = Enum.ScaleType.Fit
+            iconImg.ZIndex = 5
+        end
+    end
+
+    SetupButton("Yen", GetYenIcon())
+    SetupButton("Token", "rbxassetid://124644932563791")
+    SetupButton("Rank", GetDynamicRankIcon())
+    SetupButton("Trainer", GetTrainerIcon())
+end)
 
 local _yenGroup
 local _yenCount = 0
@@ -1240,6 +1307,7 @@ for _, name in ipairs(upgradeOrder) do
             Callback = function(val) Config["AutoYen_" .. name] = val end
         })
         YenUpgradeToggleUI[name] = myToggle
+        YenTabs:Add("Yen", myToggle)
         _yenCount = _yenCount + 1
     end
 end
@@ -1258,13 +1326,16 @@ if TokenUpgradeConfig then
             Callback = function(val) Config["AutoToken_" .. name] = val end
         })
         TokenUpgradeToggleUI[name] = myToggle
+        YenTabs:Add("Token", myToggle)
         _tokenCount = _tokenCount + 1
     end
 end
 
 RankProgressUI = YenMainSection:Paragraph({ Title = "Rank Progress", Desc = "Waiting for data...", Image = GetDynamicRankIcon(), ImageSize = 40 })
+YenTabs:Add("Rank", RankProgressUI)
 
 local RankToggle = YenMainSection:Toggle({ Title = "Auto Rank Up", Flag = "AutoRankUp_Cfg", Callback = function(val) Config.AutoRankUp = val end })
+YenTabs:Add("Rank", RankToggle)
 
 local _trainerGroup
 local _trainerCount = 0
@@ -1278,6 +1349,7 @@ for _, name in ipairs(ChanceUpgradeTypes) do
         end
     })
     ChanceUpgradeToggleUI[name] = myToggle
+    YenTabs:Add("Trainer", myToggle)
     _trainerCount = _trainerCount + 1
 end
 
