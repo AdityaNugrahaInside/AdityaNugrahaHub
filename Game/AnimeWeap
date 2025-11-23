@@ -1255,13 +1255,6 @@ task.spawn(function()
     SetupButton("Trainer", GetTrainerIcon())
 end)
 
-local TokenTopSpace = YenMainSection:Space()
-YenTabs:Add("Token", TokenTopSpace)
-local RankTopSpace = YenMainSection:Space()
-YenTabs:Add("Rank", RankTopSpace)
-local TrainerTopSpace = YenMainSection:Space()
-YenTabs:Add("Trainer", TrainerTopSpace)
-
 local _yenGroup
 local _yenCount = 0
 for _, name in ipairs(upgradeOrder) do
@@ -1304,15 +1297,15 @@ local RankToggle = YenMainSection:Toggle({ Title = "Auto Rank Up", Flag = "AutoR
 YenTabs:Add("Rank", RankToggle)
 
 for _, name in ipairs(ChanceUpgradeTypes) do
-    if _trainerCount % 2 == 0 then _trainerGroup = YenMainSection:Group({}) end
-    local myToggle = _trainerGroup:Toggle({
-        Title = "Loading...",
-        Flag = "AutoChance_" .. name,
-        Callback = function(val) Config["AutoChance_" .. name] = val end
+    local myToggle = YenMainSection:Toggle({
+        Title = "Loading...", 
+        Flag = "AutoChance_" .. name, 
+        Callback = function(val) 
+            Config["AutoChance_" .. name] = val 
+        end
     })
     ChanceUpgradeToggleUI[name] = myToggle
     YenTabs:Add("Trainer", myToggle)
-    _trainerCount = _trainerCount + 1
 end
 
 
