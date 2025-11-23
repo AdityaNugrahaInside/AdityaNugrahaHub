@@ -700,7 +700,7 @@ local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Scrip
 
 local Window = l:CreateWindow({
     Title = "AN Hub - Anime Weapons",
-    Icon = "rbxassetid://84366761557806",
+    Icon = "https://cdn.discordapp.com/attachments/1432552221798699028/1442155590683066500/logo_an_magic.gif?ex=6924678e&is=6923160e&hm=7292ada521c2dacc5c15c9e4c406b90ed45a3d2881457926a2a4f46bb711f04b",
     Author = "Aditya Nugraha",
     Folder = FolderPath,
     Size = UDim2.fromOffset(580, 460),
@@ -731,7 +731,7 @@ Window:OnDestroy(function()
     end
 end)
 
-local function CreateTabButtons(section, tabNames)
+local function CreateTabButtons(section, tabNames, iconIds)
     local TabSystem = {
         CurrentTab = tabNames[1],
         Elements = {},
@@ -1260,7 +1260,8 @@ local function GetTrainerIcon()
     return icon
 end
 
-local YenTabs = CreateTabButtons(YenMainSection, {"Yen", "Token", "Rank", "Trainer"})
+local YenTabs = CreateTabButtons(YenMainSection, {"Yen", "Token", "Rank", "Trainer"},{GetYenIcon(),"rbxassetid://124644932563791",GetDynamicRankIcon(),GetTrainerIcon()})
+
 local upgradeOrder = {"Luck", "Damage", "Yen", "Mastery", "Critical"}
 
 local _yenGroup
