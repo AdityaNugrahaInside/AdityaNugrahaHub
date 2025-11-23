@@ -334,7 +334,6 @@ local ChanceUpgradeTypes = {
 };
 local EnemyDropdown = nil;
 local RankProgressUI = nil;
-local MaterialInfoUI = nil;
 local RollToggleUI = {};
 local YenUpgradeToggleUI = {};
 local TokenUpgradeToggleUI = {};
@@ -1501,15 +1500,6 @@ local GeneralTab = MainSection:Tab({
 	Title = "General",
 	Icon = "settings"
 });
-local MaterialSection = GeneralTab:Section({
-	Title = "Inventory",
-	Icon = "package",
-	Opened = true
-});
-MaterialInfoUI = MaterialSection:Paragraph({
-	Title = "Materials",
-	Desc = "Scanning..."
-});
 local RollSection = GeneralTab:Section({
     Title = "Crate Roll",
     Icon = "refresh-cw",
@@ -2095,23 +2085,6 @@ task.spawn(function()
 				end;
 			end;
 			if Data.Materials then
-				if MaterialInfoUI then
-					local infoLines = {};
-					local materialList = {};
-					for internalName, matData in pairs(MaterialsModule) do
-						table.insert(materialList, {
-							Name = matData.Display or internalName,
-							Amount = Data.Materials[internalName] or 0
-						});
-					end;
-					table.sort(materialList, function(a, b)
-						return a.Name < b.Name;
-					end);
-					for _, item in ipairs(materialList) do
-						table.insert(infoLines, "• " .. item.Name .. " (" .. FormatNumber(item.Amount) .. ")");
-					end;
-					MaterialInfoUI:SetDesc(table.concat(infoLines, "\n"));
-				end;
 				for rollType, toggleObj in pairs(RollToggleUI) do
 					local configKey = RollTypeToConfig[rollType];
 					if Config[configKey] then
