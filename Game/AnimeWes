@@ -880,7 +880,7 @@ local function CreateTabButtons(section, tabNames, iconIds)
             Title = name,
             Icon = icon,
 			IconAlign = "Left",
-			Justify = "Center",
+			Justify = "Between",
             Callback = function()
                 UpdateVisibility(name);
             end
