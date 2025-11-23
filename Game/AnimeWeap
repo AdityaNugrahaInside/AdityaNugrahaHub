@@ -2152,7 +2152,6 @@ local AllSections = {
 	CommunitySection,
 	MainSection,
 	FarmingManagerSection,
-	MaterialSection,
 	RollSection,
 	AvatarSection,
 	YenMainSection,
