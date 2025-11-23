@@ -1547,6 +1547,7 @@ for i, rollData in ipairs(rollToggleData) do
         _rollGroup = RollSection:Group({});
     end;
     local tokenKey = RollMaterialMap[rollType];
+    print(tokenKey)
     -- local displayName = (MaterialsModule[tokenKey] and MaterialsModule[tokenKey].Display) or (RollDisplayNames[rollType] or tokenKey);
     -- local currentCount = (((getgenv()).PlayerData and (getgenv()).PlayerData.Materials) and (getgenv()).PlayerData.Materials[tokenKey]) or 0);
     local myToggle = _rollGroup:Toggle({
