@@ -1255,13 +1255,16 @@ task.spawn(function()
     SetupButton("Trainer", GetTrainerIcon())
 end)
 
+local YenToggleGroup = YenMainSection:Group({})
 for _, name in ipairs(upgradeOrder) do
     if YenUpgradeConfig[name] then
-        local myToggle = YenMainSection:Toggle({
-            Title = name, Flag = "AutoYen_" .. name, Callback = function(val) Config["AutoYen_" .. name] = val end
+        local myToggle = YenToggleGroup:Toggle({
+            Title = name,
+            Flag = "AutoYen_" .. name,
+            Callback = function(val) Config["AutoYen_" .. name] = val end
         })
-        YenUpgradeToggleUI[name] = myToggle 
-        YenTabs:Add("Yen", myToggle) 
+        YenUpgradeToggleUI[name] = myToggle
+        YenTabs:Add("Yen", myToggle)
     end
 end
 
