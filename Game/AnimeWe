@@ -837,152 +837,71 @@ Window:OnDestroy(function()
 	end;
 end);
 local function CreateTabButtons(section, tabNames, iconIds)
-	local TabSystem = {
-		CurrentTab = tabNames[1],
-		Elements = {},
-		ButtonObjects = {}
-	};
-	for _, name in pairs(tabNames) do
-		TabSystem.Elements[name] = {};
-	end;
-	local ButtonContainer = Instance.new("Frame");
-	ButtonContainer.Name = "TabButtonsContainer";
-	ButtonContainer.Size = UDim2.new(1, 0, 0, 35);
-	ButtonContainer.BackgroundTransparency = 1;
-	local Dummy = section:Paragraph({
-		Title = "Temp",
-		Desc = ""
-	});
-	local ContentParent = Dummy.ParagraphFrame.UIElements.Main.Parent.Parent.Content;
-	ButtonContainer.Parent = ContentParent;
-	Dummy.ParagraphFrame:Destroy();
-	ButtonContainer.LayoutOrder = -9999;
-	local UIList = Instance.new("UIListLayout");
-	UIList.Parent = ButtonContainer;
-	UIList.FillDirection = Enum.FillDirection.Horizontal;
-	UIList.SortOrder = Enum.SortOrder.LayoutOrder;
-	UIList.Padding = UDim.new(0, 6);
-	local function UpdateVisibility(selectedTab)
-		TabSystem.CurrentTab = selectedTab;
-		for name, objects in pairs(TabSystem.Elements) do
-			local isVisible = name == selectedTab;
-			for _, obj in ipairs(objects) do
-				if obj.ElementFrame then
-					obj.ElementFrame.Visible = isVisible;
-				elseif obj.UIElements and obj.UIElements.Main then
-					obj.UIElements.Main.Visible = isVisible;
-				end;
-			end;
-		end;
-		for name, btn in pairs(TabSystem.ButtonObjects) do
-			local isSelected = name == selectedTab;
-			local TweenService = game:GetService("TweenService");
-			local squircle = btn:FindFirstChild("Squircle");
-			local outline = btn:FindFirstChild("SquircleOutline");
-			local lbl = btn:FindFirstChild("TextLabel");
-			if squircle then
-				(TweenService:Create(squircle, TweenInfo.new(0.2), {
-					ImageTransparency = isSelected and 0 or 1
-				})):Play();
-			end;
-			if outline then
-				(TweenService:Create(outline, TweenInfo.new(0.2), {
-					ImageTransparency = isSelected and 0.85 or 1
-				})):Play();
-			end;
-			if lbl then
-				(TweenService:Create(lbl, TweenInfo.new(0.2), {
-					TextColor3 = isSelected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(180, 180, 180)
-				})):Play();
-			end;
-		end;
-		task.spawn(function()
-			task.wait(0.05);
-			if section.Opened then
-				section:Open();
-			end;
-		end);
-	end;
-	local btnWidth = 1 / (#tabNames);
-	for i, name in ipairs(tabNames) do
-		local btn = Instance.new("TextButton");
-		btn.Name = name .. "_Btn";
-		btn.Parent = ButtonContainer;
-		btn.Size = UDim2.new(btnWidth, -4, 1, 0);
-		btn.BackgroundTransparency = 1;
-		btn.AutoButtonColor = false;
-		btn.Text = "";
-		local CreatorRef = l and l.Creator;
-		local Radius = 10;
-		local bg = CreatorRef and CreatorRef.NewRoundFrame(Radius, "Squircle", {
-			ThemeTag = {
-				ImageColor3 = "Button"
-			},
-			Size = UDim2.new(1, 0, 1, 0),
-			Name = "Squircle",
-			ImageTransparency = 1
-		}) or Instance.new("Frame");
-		bg.Name = "Squircle";
-		bg.Size = UDim2.new(1, 0, 1, 0);
-		bg.BackgroundTransparency = 1;
-		bg.Parent = btn;
-		local outline = CreatorRef and CreatorRef.NewRoundFrame(Radius, "SquircleOutline", {
-			ThemeTag = {
-				ImageColor3 = "Outline"
-			},
-			Size = UDim2.new(1, 0, 1, 0),
-			Name = "SquircleOutline",
-			ImageTransparency = 1
-		}, {
-			(CreatorRef and CreatorRef.New("UIGradient", {
-				Rotation = 70,
-				Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-					ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
-					ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
-				}),
-				Transparency = NumberSequence.new({
-					NumberSequenceKeypoint.new(0, 0.1),
-					NumberSequenceKeypoint.new(0.5, 1),
-					NumberSequenceKeypoint.new(1, 0.1)
-				})
-			}))
-		}) or Instance.new("Frame");
-		outline.Name = "SquircleOutline";
-		outline.Size = UDim2.new(1, 0, 1, 0);
-		outline.BackgroundTransparency = 1;
-		outline.Parent = btn;
-		local lbl = Instance.new("TextLabel");
-		lbl.Name = "TextLabel";
-		lbl.Parent = btn;
-		lbl.Size = UDim2.new(1, 0, 1, 0);
-		lbl.BackgroundTransparency = 1;
-		lbl.Text = name;
-		lbl.Font = Enum.Font.GothamSemibold;
-		lbl.TextSize = 14;
-		lbl.TextColor3 = Color3.fromRGB(180, 180, 180);
-		lbl.ZIndex = 5;
-		btn.Activated:Connect(function()
-			UpdateVisibility(name);
-		end);
-		TabSystem.ButtonObjects[name] = btn;
-	end;
-	function TabSystem:Add(tabName, elementObject)
-		if not TabSystem.Elements[tabName] then
-			return;
-		end;
-		table.insert(TabSystem.Elements[tabName], elementObject);
-		if tabName ~= TabSystem.CurrentTab then
-			if elementObject.ElementFrame then
-				elementObject.ElementFrame.Visible = false;
-			elseif elementObject.UIElements and elementObject.UIElements.Main then
-				elementObject.UIElements.Main.Visible = false;
-			end;
-		end;
-	end;
-	UpdateVisibility(tabNames[1]);
-	section:Divider();
-	return TabSystem;
+    local TabSystem = {
+        CurrentTab = tabNames[1],
+        Elements = {},
+        ButtonObjects = {}
+    };
+    for _, name in pairs(tabNames) do
+        TabSystem.Elements[name] = {};
+    end;
+    local TabsGroup = section:Group({});
+    local function UpdateVisibility(selectedTab)
+        TabSystem.CurrentTab = selectedTab;
+        for name, objects in pairs(TabSystem.Elements) do
+            local isVisible = name == selectedTab;
+            for _, obj in ipairs(objects) do
+                if obj.ElementFrame then
+                    obj.ElementFrame.Visible = isVisible;
+                elseif obj.UIElements and obj.UIElements.Main then
+                    obj.UIElements.Main.Visible = isVisible;
+                end;
+            end;
+        end;
+        for name, btn in pairs(TabSystem.ButtonObjects) do
+            local isSelected = name == selectedTab;
+            local target = btn.ButtonFrame and btn.ButtonFrame.UIElements and btn.ButtonFrame.UIElements.Main;
+            if target then
+                (game:GetService("TweenService"):Create(target, TweenInfo.new(0.2), {
+                    ImageTransparency = isSelected and 0.93 or 1
+                })):Play();
+            end;
+        end;
+        task.spawn(function()
+            task.wait(0.05);
+            if section.Opened then
+                section:Open();
+            end;
+        end);
+    end;
+    for i, name in ipairs(tabNames) do
+        local icon = iconIds and iconIds[i] or nil;
+        local _, btn = TabsGroup:Button({
+            Title = name,
+            Icon = icon,
+            Justify = "Center",
+            Callback = function()
+                UpdateVisibility(name);
+            end
+        });
+        TabSystem.ButtonObjects[name] = btn;
+    end;
+    function TabSystem:Add(tabName, elementObject)
+        if not TabSystem.Elements[tabName] then
+            return;
+        end;
+        table.insert(TabSystem.Elements[tabName], elementObject);
+        if tabName ~= TabSystem.CurrentTab then
+            if elementObject.ElementFrame then
+                elementObject.ElementFrame.Visible = false;
+            elseif elementObject.UIElements and elementObject.UIElements.Main then
+                elementObject.UIElements.Main.Visible = false;
+            end;
+        end;
+    end;
+    UpdateVisibility(tabNames[1]);
+    section:Divider();
+    return TabSystem;
 end;
 local function GetHRP()
 	return LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart");
@@ -1397,34 +1316,12 @@ local FarmingManagerSection = FarmTab:Section({
 	Opened = true
 });
 local FarmTabs = CreateTabButtons(FarmingManagerSection, {
-	"Zone Farming",
-	"Gamemodes"
+    "Zone Farming",
+    "Gamemodes"
+}, {
+    "rbxassetid://10709791437",
+    "rbxassetid://10709752906"
 });
-task.spawn(function()
-	task.wait(0.1);
-	local function SetupButton(btnName, iconId)
-		local btn = FarmTabs.ButtonObjects[btnName];
-		if btn then
-			local lbl = btn:FindFirstChildOfClass("TextLabel");
-			if lbl then
-				lbl.Size = UDim2.new(1, -25, 1, 0);
-				lbl.Position = UDim2.new(0, 25, 0, 0);
-				lbl.TextXAlignment = Enum.TextXAlignment.Left;
-			end;
-			local iconImg = Instance.new("ImageLabel");
-			iconImg.Name = btnName .. "Icon";
-			iconImg.Parent = btn;
-			iconImg.Size = UDim2.fromOffset(20, 20);
-			iconImg.AnchorPoint = Vector2.new(0, 0.5);
-			iconImg.Position = UDim2.new(0, 0, 0.5, 0);
-			iconImg.BackgroundTransparency = 1;
-			iconImg.Image = iconId;
-			iconImg.ScaleType = Enum.ScaleType.Fit;
-		end;
-	end;
-	SetupButton("Zone Farming", "rbxassetid://10709791437");
-	SetupButton("Gamemodes", "rbxassetid://10709752906");
-end);
 EnemyDropdown = FarmingManagerSection:Dropdown({
 	Title = "Select Enemy",
 	Multi = false,
@@ -1547,7 +1444,6 @@ for i, rollData in ipairs(rollToggleData) do
         _rollGroup = RollSection:Group({});
     end;
     local tokenKey = RollMaterialMap[rollType];
-    print(tokenKey.."halo")
     local displayName = (MaterialsModule[tokenKey] and MaterialsModule[tokenKey].Display) or (RollDisplayNames[rollType] or tokenKey);
     local currentCount = (((getgenv()).PlayerData and (getgenv()).PlayerData.Materials) and (getgenv()).PlayerData.Materials[tokenKey]) or 0;
     local myToggle = _rollGroup:Toggle({
@@ -1700,7 +1596,7 @@ local function GetTrainerIcon()
 	return icon;
 end;
 local YenTabs = CreateTabButtons(YenMainSection, {
-	"Yen",
+	"YenSS",
 	"Token",
 	"Rank",
 	"Trainer"
