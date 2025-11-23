@@ -1098,7 +1098,6 @@ task.spawn(function()
                 lbl.Size = UDim2.new(1, -25, 1, 0)
                 lbl.Position = UDim2.new(0, 25, 0, 0)
                 lbl.TextXAlignment = Enum.TextXAlignment.Left
-                lbl.ZIndex = 5
             end
             local iconImg = Instance.new("ImageLabel")
             iconImg.Name = btnName.."Icon"
@@ -1109,7 +1108,6 @@ task.spawn(function()
             iconImg.BackgroundTransparency = 1
             iconImg.Image = iconId
             iconImg.ScaleType = Enum.ScaleType.Fit
-            iconImg.ZIndex = 5
         end
     end
     SetupButton("Zone Farming", "rbxassetid://10709791437")
@@ -1260,7 +1258,7 @@ local function GetTrainerIcon()
     return icon
 end
 
-local YenTabs = CreateTabButtons(YenMainSection, {"YenSS", "Token", "Rank", "Trainer"})
+local YenTabs = CreateTabButtons(YenMainSection, {"Yen", "Token", "Rank", "Trainer"})
 local upgradeOrder = {"Luck", "Damage", "Yen", "Mastery", "Critical"}
 
 task.spawn(function()
