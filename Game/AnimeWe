@@ -879,8 +879,8 @@ local function CreateTabButtons(section, tabNames, iconIds)
         local _, btn = TabsGroup:Button({
             Title = name,
             Icon = icon,
-            Justify = "between",
-            IconAlign = "left",
+            Justify = "Between",
+            IconAlign = "Left",
             Callback = function()
                 UpdateVisibility(name);
             end
