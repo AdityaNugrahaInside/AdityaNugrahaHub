@@ -820,7 +820,7 @@ do
 	Window:Tag({
 		Title = "v" .. ANUI.Version,
 		Icon = "github",
-		Color = Color3.fromHex("#ff0000ff")
+		Color = Color3.fromHex("#ff0000")
 	});
 end;
 if not isfile(ExpiryFile) then
