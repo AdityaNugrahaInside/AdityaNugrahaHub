@@ -378,7 +378,7 @@ local function InitAutoReconnectBypass()
                 debug.setupvalue(func, numIndex, 0)
                 if uiObject then
                     uiObject.Visible = true
-                    uiObject.Text = "ANHub Bypass V"
+                    uiObject.Text = "ANHub Bypass Reconnect V2"
                     uiObject.TextColor3 = Color3.fromRGB(0, 255, 100)
                 end
                 task.wait(0.1)
