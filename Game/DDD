@@ -1586,7 +1586,6 @@ local function BuildExchangeValues()
             Title = item.Title,
             Desc = string.format("(%s/%s)", FormatNumber(ExchangeAmount), FormatNumber(count)),
             Icon = img,
-            Images = { img },
             Value = key,
         })
     end
