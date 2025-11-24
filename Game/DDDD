@@ -1605,7 +1605,7 @@ local MatPreview = ExchangeSection:Dropdown({
         local info = SelectedExToken and MaterialsModule[SelectedExToken] or nil
         if info and info.Template then
             MatPreview:SetTitle(info.Display)
-            MatPreview:SetIcon(SelectedExIcon or GetIcon(info.Template), 40)
+            MatPreview:SetIcon(SelectedExIcon or GetIcon(info.Template), 20)
             local pData = (getgenv()).PlayerData
             local matCount = pData and pData.Materials and pData.Materials[SelectedExToken] or 0
             MatPreview:SetDesc(string.format("(%s/%s)", FormatNumber(ExchangeAmount), FormatNumber(matCount)))
@@ -1680,7 +1680,7 @@ task.spawn(function()
             local info = MaterialsModule[SelectedExToken]
             if info and info.Template then
                 MatPreview:SetTitle(info.Display)
-                MatPreview:SetIcon(SelectedExIcon or GetIcon(info.Template), 40)
+                MatPreview:SetIcon(SelectedExIcon or GetIcon(info.Template), 20)
                 local pData2 = (getgenv()).PlayerData
                 local matCount2 = pData2 and pData2.Materials and pData2.Materials[SelectedExToken] or 0
                 MatPreview:SetDesc(string.format("(%s/%s)", FormatNumber(ExchangeAmount), FormatNumber(matCount2)))
@@ -1695,7 +1695,7 @@ task.spawn(function()
         else
             MatPreview:SetTitle("Select Token")
             MatPreview:SetDesc("None Selected")
-            MatPreview:SetIcon("rbxassetid://84366761557806", 40)
+            MatPreview:SetIcon("rbxassetid://84366761557806", 20)
             TradePreview:SetDesc("Waiting...")
         end
         task.wait(0.5)
