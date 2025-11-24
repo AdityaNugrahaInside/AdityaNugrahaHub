@@ -308,7 +308,8 @@ local Config = {
 	SelectedEnemy = nil,
 	ZoneConfigurations = {},
 	TargetDungeon = {},
-	TargetRaid = {}
+	TargetRaid = {},
+	TargetDefense = {} -- Added TargetDefense
 };
 local hrp, humanoid;
 local LastZone = nil;
@@ -612,6 +613,7 @@ local function GetRollIconAsset(rollType)
 	return fallback;
 end;
 local dungeonList, dungeonDB, raidList, raidDB = {}, {}, {}, {};
+local defenseList, defenseDB = {}, {}; -- Init Defense Variables
 local function LoadDungeonData()
 	local success, module = pcall(function()
 		return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Dungeon);
@@ -654,6 +656,28 @@ local function LoadRaidData()
 		end;
 	end;
 end;
+-- Added Defense Data Loader
+local function LoadDefenseData()
+	local success, module = pcall(function()
+		return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Defense);
+	end);
+	if success and module and module.PHASES then
+		defenseList, defenseDB = {}, {};
+		for id, phase in ipairs(module.PHASES) do
+			local rName = phase.Name;
+			local hpCalc = math.floor((phase.HealthBase or 0) / 50);
+			table.insert(defenseList, {
+				Title = rName,
+				Desc = "Hp Base: " .. FormatNumber(hpCalc),
+				Value = rName
+			});
+			defenseDB[rName] = {
+				ID = id,
+				Times = phase.START_TIMES -- Assuming Defense uses START_TIMES like Raid
+			};
+		end;
+	end;
+end;
 local function LoadRollData(rollType)
 	local success, module = pcall(function()
 		return require(ReplicatedStorage.Scripts.Configs.RollGachas[rollType]);
@@ -674,6 +698,7 @@ local function LoadRollData(rollType)
 end;
 LoadDungeonData();
 LoadRaidData();
+LoadDefenseData(); -- Call Defense Loader
 for _, rollType in ipairs(AllRollTypes) do
 	LoadRollData(rollType);
 end;
@@ -1047,6 +1072,9 @@ local function GetCurrentMapStatus()
 	if Workspace:FindFirstChild("Raid") then
 		return "Raid";
 	end;
+	if Workspace:FindFirstChild("Defense") then
+		return "Defense";
+	end;
 	if Workspace:FindFirstChild("Enemies") and (not zones) then
 		return "Dungeon:Active";
 	end;
@@ -1067,7 +1095,11 @@ local function LogicGamemodes()
 				inLobbyZone = true;
 			end;
 		end;
-		local isFightingZone = string.find(currentMap, ":") and (string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid"));
+		local isFightingZone = string.find(currentMap, ":") and (string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense"));
+		if currentMap == "Dungeon" or currentMap == "Raid" or currentMap == "Defense" then
+			isFightingZone = true -- Detected folder directly
+		end
+		
 		if currentMap ~= "Unknown" then
 			if isFightingZone then
 				wasInGamemode = true;
@@ -1111,9 +1143,9 @@ local function LogicGamemodes()
 				task.wait(0.1);
 			elseif inLobbyZone or wasInGamemode and (not isFightingZone) then
 				currentTargetObj = nil;
-				if LastZone and LastZone ~= "" and LastZone ~= "Dungeon" and LastZone ~= "Raid" and LastZone ~= "Unknown" then
+				if LastZone and LastZone ~= "" and LastZone ~= "Dungeon" and LastZone ~= "Raid" and LastZone ~= "Defense" and LastZone ~= "Unknown" then
 					l:Notify({
-						Title = "Dungeon Finished",
+						Title = "Mode Finished",
 						Content = "In Lobby -> Returning to " .. LastZone,
 						Icon = "map-pin",
 						Duration = 3
@@ -1159,8 +1191,27 @@ local function LogicGamemodes()
 						end;
 					end;
 				end;
+				-- Added Defense Logic (Similar to Raid)
+				if not targetString then
+					for _, dName in pairs(Config.TargetDefense) do
+						local data = defenseDB[dName];
+						if data and data.Times then
+							for _, timeVal in ipairs(data.Times) do
+								if currentMinute == timeVal then
+									targetString = "Defense:" .. tostring(data.ID);
+									targetName = dName;
+									break;
+								end;
+							end;
+						end;
+						if targetString then
+							break;
+						end;
+					end;
+				end;
+
 				if targetString then
-					if not string.find(currentMap, "Dungeon") and (not string.find(currentMap, "Raid")) then
+					if not string.find(currentMap, "Dungeon") and (not string.find(currentMap, "Raid")) and (not string.find(currentMap, "Defense")) then
 						LastZone = currentMap;
 					end;
 					l:Notify({
@@ -1452,6 +1503,22 @@ local RaidDrop = FarmingManagerSection:Dropdown({
 	end
 });
 FarmTabs:Add("Gamemodes", RaidDrop);
+-- Added Defense Dropdown
+local DefenseDrop = FarmingManagerSection:Dropdown({
+	Title = "Select Defense",
+	Multi = true,
+	Flag = "DefenseDiff_Cfg",
+	Values = defenseList,
+	Callback = function(val)
+		local t = {};
+		for _, v in pairs(val) do
+			table.insert(t, type(v) == "table" and v.Value or v);
+		end;
+		Config.TargetDefense = t;
+	end
+});
+FarmTabs:Add("Gamemodes", DefenseDrop);
+
 local ModeToggle = FarmingManagerSection:Toggle({
 	Title = "Auto Join & Kill",
 	Flag = "AutoDungeon_Cfg",
