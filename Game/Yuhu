@@ -577,7 +577,11 @@ local function GetAvatarsWithStats()
 			machineStats = r;
 		end;
 	end;
-	local zonesPath = ReplicatedStorage.Scripts.Configs["Multiple Zones"].Enemies;
+	-- [MODIFIKASI: DETEKSI NAMA FOLDER OTOMATIS]
+	local ConfigsFolder = ReplicatedStorage.Scripts.Configs
+	local MZFolder = ConfigsFolder:FindFirstChild("Multiple Zones") or ConfigsFolder:FindFirstChild("MultipleZones")
+	local zonesPath = MZFolder and MZFolder:FindFirstChild("Enemies")
+
 	if zonesPath then
 		for _, module in pairs(zonesPath:GetChildren()) do
 			if module:IsA("ModuleScript") then
