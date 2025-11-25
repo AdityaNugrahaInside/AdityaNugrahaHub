@@ -3,260 +3,40 @@ repeat
 until game:IsLoaded();
 
 -- [LOADING SCREEN DARI FILE 2]
-local function PlayElegantLoading()
-	local TweenService = game:GetService("TweenService");
-	local Lighting = game:GetService("Lighting");
-	local CoreGui = game:GetService("CoreGui");
-	local PlayerGui = (game:GetService("Players")).LocalPlayer:WaitForChild("PlayerGui");
-	local TargetParent = pcall(function()
-		return CoreGui.Name;
-	end) and CoreGui or PlayerGui;
-	local Blur = Instance.new("BlurEffect");
-	Blur.Name = "ANHub_Blur";
-	Blur.Size = 0;
-	Blur.Parent = Lighting;
-	local ScreenGui = Instance.new("ScreenGui");
-	ScreenGui.Name = "ANHub_LoadScreen";
-	ScreenGui.IgnoreGuiInset = true;
-	ScreenGui.DisplayOrder = 9999;
-	ScreenGui.Parent = TargetParent;
-	local Overlay = Instance.new("Frame");
-	Overlay.Name = "Overlay";
-	Overlay.Parent = ScreenGui;
-	Overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0);
-	Overlay.BackgroundTransparency = 1;
-	Overlay.Size = UDim2.new(1, 0, 1, 0);
-	local Card = Instance.new("Frame");
-	Card.Name = "Card";
-	Card.Parent = ScreenGui;
-	Card.AnchorPoint = Vector2.new(0.5, 0.5);
-	Card.BackgroundColor3 = Color3.fromRGB(20, 20, 20);
-	Card.Position = UDim2.new(0.5, 0, 0.5, 0);
-	Card.Size = UDim2.new(0, 0, 0, 0);
-	Card.BorderSizePixel = 0;
-	Card.ClipsDescendants = false;
-	local CardCorner = Instance.new("UICorner");
-	CardCorner.CornerRadius = UDim.new(0, 12);
-	CardCorner.Parent = Card;
-	local CardStroke = Instance.new("UIStroke");
-	CardStroke.Parent = Card;
-	CardStroke.Thickness = 2;
-	CardStroke.Transparency = 1;
-	local StrokeGradient = Instance.new("UIGradient");
-	StrokeGradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 255, 170)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 150, 255))
-	});
-	StrokeGradient.Rotation = 45;
-	StrokeGradient.Parent = CardStroke;
-	local Shadow = Instance.new("ImageLabel");
-	Shadow.Parent = Card;
-	Shadow.AnchorPoint = Vector2.new(0.5, 0.5);
-	Shadow.Position = UDim2.new(0.5, 0, 0.5, 0);
-	Shadow.Size = UDim2.new(1, 140, 1, 140);
-	Shadow.BackgroundTransparency = 1;
-	Shadow.Image = "rbxassetid://6014261993";
-	Shadow.ImageColor3 = Color3.fromRGB(0, 200, 255);
-	Shadow.ImageTransparency = 1;
-	Shadow.ZIndex = 0;
-	local ContentContainer = Instance.new("CanvasGroup");
-	ContentContainer.Name = "Content";
-	ContentContainer.Parent = Card;
-	ContentContainer.Size = UDim2.new(1, 0, 1, 0);
-	ContentContainer.BackgroundTransparency = 1;
-	ContentContainer.BorderSizePixel = 0;
-	ContentContainer.GroupTransparency = 1;
-	local ContentCorner = Instance.new("UICorner");
-	ContentCorner.CornerRadius = UDim.new(0, 12);
-	ContentCorner.Parent = ContentContainer;
-	local Title = Instance.new("TextLabel");
-	Title.Parent = ContentContainer;
-	Title.BackgroundTransparency = 1;
-	Title.Position = UDim2.new(0, 0, 0.15, 0);
-	Title.Size = UDim2.new(1, 0, 0, 35);
-	Title.Font = Enum.Font.GothamBold;
-	Title.Text = "AN HUB";
-	Title.TextColor3 = Color3.fromRGB(255, 255, 255);
-	Title.TextSize = 32;
-	local SubTitle = Instance.new("TextLabel");
-	SubTitle.Parent = ContentContainer;
-	SubTitle.BackgroundTransparency = 1;
-	SubTitle.Position = UDim2.new(0, 0, 0.4, 0);
-	SubTitle.Size = UDim2.new(1, 0, 0, 20);
-	SubTitle.Font = Enum.Font.GothamMedium;
-	SubTitle.Text = "ANIME WEAPONS";
-	SubTitle.TextColor3 = Color3.fromRGB(180, 180, 180);
-	SubTitle.TextSize = 14;
-	local StatusText = Instance.new("TextLabel");
-	StatusText.Parent = ContentContainer;
-	StatusText.BackgroundTransparency = 1;
-	StatusText.Position = UDim2.new(0, 30, 0.65, 0);
-	StatusText.Size = UDim2.new(1, -60, 0, 20);
-	StatusText.Font = Enum.Font.Gotham;
-	StatusText.Text = "Initializing...";
-	StatusText.TextColor3 = Color3.fromRGB(150, 150, 150);
-	StatusText.TextSize = 12;
-	StatusText.TextXAlignment = Enum.TextXAlignment.Left;
-	local PercentText = Instance.new("TextLabel");
-	PercentText.Parent = ContentContainer;
-	PercentText.BackgroundTransparency = 1;
-	PercentText.Position = UDim2.new(0, 30, 0.65, 0);
-	PercentText.Size = UDim2.new(1, -60, 0, 20);
-	PercentText.Font = Enum.Font.GothamBold;
-	PercentText.Text = "0%";
-	PercentText.TextColor3 = Color3.fromRGB(0, 255, 170);
-	PercentText.TextSize = 12;
-	PercentText.TextXAlignment = Enum.TextXAlignment.Right;
-	local BarBG = Instance.new("Frame");
-	BarBG.Parent = ContentContainer;
-	BarBG.BackgroundColor3 = Color3.fromRGB(40, 40, 40);
-	BarBG.Position = UDim2.new(0, 30, 0.8, 0);
-	BarBG.Size = UDim2.new(1, -60, 0, 6);
-	BarBG.BorderSizePixel = 0;
-	local BarCorner = Instance.new("UICorner");
-	BarCorner.CornerRadius = UDim.new(1, 0);
-	BarCorner.Parent = BarBG;
-	local BarFill = Instance.new("Frame");
-	BarFill.Parent = BarBG;
-	BarFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255);
-	BarFill.Size = UDim2.new(0, 0, 1, 0);
-	BarFill.BorderSizePixel = 0;
-	local FillCorner = Instance.new("UICorner");
-	FillCorner.CornerRadius = UDim.new(1, 0);
-	FillCorner.Parent = BarFill;
-	local BarGradient = Instance.new("UIGradient");
-	BarGradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 255, 170)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 150, 255))
-	});
-	BarGradient.Parent = BarFill;
-	(TweenService:Create(Blur, TweenInfo.new(0.8), {
-		Size = 20
-	})):Play();
-	(TweenService:Create(Overlay, TweenInfo.new(0.5), {
-		BackgroundTransparency = 0.3
-	})):Play();
-	task.wait(0.2);
-	local TargetSize = UDim2.new(0, 420, 0, 160);
-	(TweenService:Create(Card, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-		Size = TargetSize
-	})):Play();
-	(TweenService:Create(CardStroke, TweenInfo.new(0.6), {
-		Transparency = 0
-	})):Play();
-	(TweenService:Create(Shadow, TweenInfo.new(0.6), {
-		ImageTransparency = 0.6
-	})):Play();
-	task.wait(0.3);
-	(TweenService:Create(ContentContainer, TweenInfo.new(0.5), {
-		GroupTransparency = 0
-	})):Play();
-	local StartTime = os.clock();
-	local Duration = 5;
-	local ProgressValue = Instance.new("NumberValue");
-	ProgressValue.Value = 0;
-	(ProgressValue:GetPropertyChangedSignal("Value")):Connect(function()
-		local val = ProgressValue.Value;
-		PercentText.Text = math.floor(val) .. "%";
-		BarFill.Size = UDim2.new(val / 100, 0, 1, 0);
-	end);
-	task.spawn(function()
-		local TweenInfoAnim = TweenInfo.new(Duration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut);
-		(TweenService:Create(ProgressValue, TweenInfoAnim, {
-			Value = 100
-		})):Play();
-	end);
-	local steps = {
-		{
-			Time = 0,
-			Text = "Verifying Key System..."
-		},
-		{
-			Time = 1,
-			Text = "Bypassing Security Checks..."
-		},
-		{
-			Time = 2.2,
-			Text = "Reading Game Data..."
-		},
-		{
-			Time = 3.5,
-			Text = "Loading Configs & Assets..."
-		},
-		{
-			Time = 4.5,
-			Text = "Finalizing Interface..."
-		}
-	};
-	for i, step in ipairs(steps) do
-		local elapsedTime = os.clock() - StartTime;
-		local waitTime = step.Time - elapsedTime;
-		if waitTime > 0 then
-			task.wait(waitTime);
-		end;
-		StatusText.TextTransparency = 1;
-		StatusText.Text = step.Text;
-		(TweenService:Create(StatusText, TweenInfo.new(0.3), {
-			TextTransparency = 0
-		})):Play();
-	end;
-	local remaining = Duration - (os.clock() - StartTime);
-	if remaining > 0 then
-		task.wait(remaining);
-	end;
-	PercentText.Text = "100%";
-	BarFill.Size = UDim2.new(1, 0, 1, 0);
-	StatusText.Text = "Ready!";
-	task.wait(0.5);
-	(TweenService:Create(ContentContainer, TweenInfo.new(0.3), {
-		GroupTransparency = 1
-	})):Play();
-	(TweenService:Create(CardStroke, TweenInfo.new(0.3), {
-		Transparency = 1
-	})):Play();
-	(TweenService:Create(Shadow, TweenInfo.new(0.3), {
-		ImageTransparency = 1
-	})):Play();
-	local PopOut = TweenService:Create(Card, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-		Size = UDim2.new(0, 0, 0, 0)
-	});
-	PopOut:Play();
-	(TweenService:Create(Blur, TweenInfo.new(0.5), {
-		Size = 0
-	})):Play();
-	(TweenService:Create(Overlay, TweenInfo.new(0.5), {
-		BackgroundTransparency = 1
-	})):Play();
-	PopOut.Completed:Wait();
-	ScreenGui:Destroy();
-	Blur:Destroy();
-end;
-PlayElegantLoading();
-local FolderPath = "ANHub/AnimeWeapons";
-local ExpiryFile = "ANHub_Key_Timer.txt";
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/loading.lua"))()
+
+-- [MODIFIKASI 1: UPDATE FOLDER PATH]
+-- Path dasar sekarang diarahkan langsung ke ANUI/AnimeWeapons
+local FolderPath = "ANUI/AnimeWeapons"; 
+local ExpiryFile = FolderPath .. "/ANHub_Key_Timer.txt"; -- File timer ditaruh di dalam folder agar rapi
 local ZoneDBFile = "Zone_Database.json";
+
 local function SecureWipe()
 	if not isfile or (not delfile) or (not readfile) or (not listfiles) then
 		return;
 	end;
 	local currentTime = os.time();
 	local isExpired = false;
+	
+    -- Cek path baru
 	if isfile(ExpiryFile) then
 		local savedTime = tonumber(readfile(ExpiryFile)) or 0;
 		if currentTime > savedTime then
 			isExpired = true;
 		end;
-	elseif isfolder("WindUI/" .. FolderPath) then
+	-- Cek folder lama untuk pembersihan (Opsional, menjaga kebersihan file lama)
+	elseif isfolder(FolderPath) then
 		isExpired = true;
 	end;
+
 	if isExpired then
 		if isfile(ExpiryFile) then
 			delfile(ExpiryFile);
 		end;
+		
+        -- List folder yang mungkin berisi data lama/baru untuk dibersihkan jika expired
 		local PossiblePaths = {
-			"ANHub/AnimeWeapons",
-			"WindUI/ANHub/AnimeWeapons",
-			"WindUI/Configs"
+			"ANUI/AnimeWeapons",
 		};
 		local UserId = tostring(game.Players.LocalPlayer.UserId);
 		for _, path in pairs(PossiblePaths) do
@@ -274,6 +54,7 @@ local function SecureWipe()
 	end;
 end;
 SecureWipe();
+
 local Players = game:GetService("Players");
 local LocalPlayer = Players.LocalPlayer;
 local Workspace = game:GetService("Workspace");
@@ -283,6 +64,11 @@ local HttpService = game:GetService("HttpService");
 local RunService = game:GetService("RunService");
 local Reliable = (ReplicatedStorage:WaitForChild("Reply")):WaitForChild("Reliable");
 local Unreliable = (ReplicatedStorage:WaitForChild("Reply")):WaitForChild("Unreliable");
+
+-- Pastikan folder utama ada
+if not isfolder("ANUI") then makefolder("ANUI") end
+if not isfolder(FolderPath) then makefolder(FolderPath) end
+
 local Config = {
 	AutoFarm = false,
 	AutoDungeon = false,
@@ -301,6 +87,9 @@ local Config = {
 	AutoRollBreathing = false,
 	AutoRollOrganization = false,
 	AutoRollTitan = false,
+    AutoRollMagicEyes = false,
+    AutoRollDemonArt = false,
+    AutoUpgradeMagicEyes = false,
 	AutoChance_Breath = false,
 	AutoChance_Pirate = false,
 	AutoChance_Wise = false,
@@ -309,7 +98,7 @@ local Config = {
 	ZoneConfigurations = {},
 	TargetDungeon = {},
 	TargetRaid = {},
-	TargetDefense = {} -- Added TargetDefense
+	TargetDefense = {} 
 };
 local hrp, humanoid;
 local LastZone = nil;
@@ -327,7 +116,9 @@ local AllRollTypes = {
 	"Haki",
 	"Breathing",
 	"Organization",
-	"Titan"
+	"Titan",
+    "MagicEyes",
+    "DemonArt"
 };
 local ChanceUpgradeTypes = {
 	"Breath",
@@ -342,6 +133,7 @@ local YenUpgradeToggleUI = {};
 local TokenUpgradeToggleUI = {};
 local ChanceUpgradeToggleUI = {};
 (getgenv()).PlayerData = nil;
+
 local function JSONPretty(val, indent)
 	indent = indent or 0;
 	local valType = type(val);
@@ -453,6 +245,14 @@ if ChancePath then
 		end;
 	end;
 end;
+local MagicEyesModule = nil;
+pcall(function()
+    MagicEyesModule = require(ReplicatedStorage.Scripts.Configs.RollGachaUpgrades.MagicEyes);
+end);
+local DemonArtModule = nil;
+pcall(function()
+    DemonArtModule = require(ReplicatedStorage.Scripts.Configs.RollGachaUpgrades.DemonArt);
+end);
 local YenUpgradeConfig = YenModule.Config;
 local TokenUpgradeConfig = TokenModule.Config;
 local MaxRankCap = RankModule.MAX or 33;
@@ -485,7 +285,9 @@ local RollMaterialMap = {
 	Haki = "HakiToken",
 	Breathing = "BreathingToken",
 	Organization = "OrganizationToken",
-	Titan = "TitanToken"
+	Titan = "TitanToken",
+    MagicEyes = "EyeToken",
+    DemonArt = "DemonToken"
 };
 local RollDisplayNames = {
 	Biju = "Biju Shard",
@@ -495,7 +297,9 @@ local RollDisplayNames = {
 	Haki = "Haki Shard",
 	Breathing = "Breathing Stone",
 	Organization = "Organization Shard",
-	Titan = "Titan Shard"
+	Titan = "Titan Shard",
+    MagicEyes = "Magic Eyes",
+    DemonArt = "Demon Art"
 };
 local RollTypeToConfig = {
 	Biju = "AutoRollBiju",
@@ -505,18 +309,23 @@ local RollTypeToConfig = {
 	Haki = "AutoRollHaki",
 	Breathing = "AutoRollBreathing",
 	Organization = "AutoRollOrganization",
-	Titan = "AutoRollTitan"
+	Titan = "AutoRollTitan",
+    MagicEyes = "AutoRollMagicEyes",
+    DemonArt = "AutoRollDemonArt"
 };
+
 local function LoadZoneDB()
-	if isfile("WindUI/" .. FolderPath .. "/" .. ZoneDBFile) then
+    -- Path manual diupdate ke FolderPath
+	if isfile(FolderPath .. "/" .. ZoneDBFile) then
 		local success, result = pcall(function()
-			return HttpService:JSONDecode(readfile("WindUI/" .. FolderPath .. "/" .. ZoneDBFile));
+			return HttpService:JSONDecode(readfile(FolderPath .. "/" .. ZoneDBFile));
 		end);
 		if success and type(result) == "table" then
 			Config.ZoneConfigurations = result;
 		end;
 	end;
 end;
+
 local function SaveZoneConfig(zone, selectedItem)
 	if not zone or zone == "" or zone == "Unknown" then
 		return;
@@ -548,16 +357,19 @@ local function SaveZoneConfig(zone, selectedItem)
 	end;
 	Config.SelectedEnemy = val;
 	Config.ZoneConfigurations[zone] = savedEntry;
-	if not isfolder(("WindUI/" .. FolderPath)) then
-		makefolder("WindUI/" .. FolderPath);
+	
+    -- Path manual diupdate ke FolderPath
+	if not isfolder(FolderPath) then
+		makefolder(FolderPath);
 	end;
 	if writefile and HttpService then
 		pcall(function()
-			writefile("WindUI/" .. FolderPath .. "/" .. ZoneDBFile, HttpService:JSONEncode(Config.ZoneConfigurations));
+			writefile(FolderPath .. "/" .. ZoneDBFile, HttpService:JSONEncode(Config.ZoneConfigurations));
 		end);
 	end;
 end;
 LoadZoneDB();
+
 local function GetOnlineKeys()
 	local keys = {
 		"Keynya",
@@ -592,7 +404,7 @@ local function GetRollIconAsset(rollType)
 	local fallback = "rbxassetid://84366761557806";
 	local assetId = "";
 	pcall(function()
-		local machine = Workspace.Billboards.Machines:FindFirstChild(rollType);
+		local machine = Workspace.Billboards.CrateRoll:FindFirstChild(rollType);
 		if machine and machine:FindFirstChild("icon") then
 			assetId = machine.icon.Image;
 		end;
@@ -613,7 +425,7 @@ local function GetRollIconAsset(rollType)
 	return fallback;
 end;
 local dungeonList, dungeonDB, raidList, raidDB = {}, {}, {}, {};
-local defenseList, defenseDB = {}, {}; -- Init Defense Variables
+local defenseList, defenseDB = {}, {}; 
 local function LoadDungeonData()
 	local success, module = pcall(function()
 		return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Dungeon);
@@ -623,14 +435,16 @@ local function LoadDungeonData()
 		for id, phase in ipairs(module.PHASES) do
 			local dName = phase.Name;
 			local hpCalc = math.floor((phase.HealthBase or 0) / 50);
+			local desc = "Hp Base: " .. FormatNumber(hpCalc);
 			table.insert(dungeonList, {
 				Title = dName,
-				Desc = "Hp Base: " .. FormatNumber(hpCalc),
+				Desc = desc,
 				Value = dName
 			});
 			dungeonDB[dName] = {
 				ID = id,
-				Time = phase.START_MINUTE
+				Time = phase.START_MINUTE,
+				BaseDesc = desc
 			};
 		end;
 	end;
@@ -644,19 +458,20 @@ local function LoadRaidData()
 		for id, phase in ipairs(module.PHASES) do
 			local rName = phase.Name;
 			local hpCalc = math.floor((phase.HealthBase or 0) / 50);
+			local desc = "Hp Base: " .. FormatNumber(hpCalc);
 			table.insert(raidList, {
 				Title = rName,
-				Desc = "Hp Base: " .. FormatNumber(hpCalc),
+				Desc = desc,
 				Value = rName
 			});
 			raidDB[rName] = {
 				ID = id,
-				Times = phase.START_TIMES
+				Times = phase.START_TIMES,
+				BaseDesc = desc
 			};
 		end;
 	end;
 end;
--- Added Defense Data Loader
 local function LoadDefenseData()
 	local success, module = pcall(function()
 		return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Defense);
@@ -666,14 +481,16 @@ local function LoadDefenseData()
 		for id, phase in ipairs(module.PHASES) do
 			local rName = phase.Name;
 			local hpCalc = math.floor((phase.HealthBase or 0) / 50);
+			local desc = "Hp Base: " .. FormatNumber(hpCalc);
 			table.insert(defenseList, {
 				Title = rName,
-				Desc = "Hp Base: " .. FormatNumber(hpCalc),
+				Desc = desc,
 				Value = rName
 			});
 			defenseDB[rName] = {
 				ID = id,
-				Times = phase.START_TIMES -- Assuming Defense uses START_TIMES like Raid
+				Times = phase.START_TIMES,
+				BaseDesc = desc 
 			};
 		end;
 	end;
@@ -698,7 +515,7 @@ local function LoadRollData(rollType)
 end;
 LoadDungeonData();
 LoadRaidData();
-LoadDefenseData(); -- Call Defense Loader
+LoadDefenseData(); 
 for _, rollType in ipairs(AllRollTypes) do
 	LoadRollData(rollType);
 end;
@@ -821,18 +638,21 @@ local function GetAvatarsWithStats()
 	end;
 	return list;
 end;
-local l = (loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/main.lua")))();
+local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/main.lua"))()
+
+-- [MODIFIKASI 2: KEYBIND DAN FOLDER]
 local Window = l:CreateWindow({
 	Title = "AN Hub - Anime Weapons",
 	Icon = "rbxassetid://84366761557806",
 	Author = "Aditya Nugraha",
-	Folder = FolderPath,
+	Folder = "AnimeWeapons", -- Folder untuk Library (Otomatis menjadi ANUI/AnimeWeapons/config)
 	Size = UDim2.fromOffset(580, 460),
 	Acrylic = true,
 	Theme = "Dark",
 	Resizable = true,
 	SideBarWidth = 170,
 	HideSearchBar = true,
+	ToggleKey = Enum.KeyCode.RightControl, -- Menambahkan Keybind (Right Ctrl)
 	KeySystem = {
 		Enabled = true,
 		Title = "ANHub Access",
@@ -843,6 +663,7 @@ local Window = l:CreateWindow({
 		SaveKey = true
 	}
 });
+
 do
 	Window:Tag({
 		Title = "v" .. ANUI.Version,
@@ -850,9 +671,11 @@ do
 		Color = Color3.fromHex("#ff0000")
 	});
 end;
+
 if not isfile(ExpiryFile) then
 	writefile(ExpiryFile, tostring(os.time() + 86400));
 end;
+
 Window:OnDestroy(function()
 	Config.AutoFarm = false;
 	Config.AutoDungeon = false;
@@ -884,6 +707,11 @@ local function CreateTabButtons(section, tabNames)
     ButtonContainer.Size = UDim2.new(1, 0, 0, 35)
     ButtonContainer.BackgroundTransparency = 1
     
+    local ContainerPadding = Instance.new("UIPadding")
+    ContainerPadding.Parent = ButtonContainer
+    ContainerPadding.PaddingLeft = UDim.new(0, 5)
+    ContainerPadding.PaddingRight = UDim.new(0, 5)
+    
     local Dummy = section:Paragraph({Title="Temp", Desc=""})
     local ContentParent = Dummy.ParagraphFrame.UIElements.Main.Parent.Parent.Content
     ButtonContainer.Parent = ContentParent
@@ -895,7 +723,7 @@ local function CreateTabButtons(section, tabNames)
     UIList.Parent = ButtonContainer
     UIList.FillDirection = Enum.FillDirection.Horizontal
     UIList.SortOrder = Enum.SortOrder.LayoutOrder
-    UIList.Padding = UDim.new(0, 6)
+    UIList.Padding = UDim.new(0, 5)
     
     local function UpdateVisibility(selectedTab)
         TabSystem.CurrentTab = selectedTab
@@ -906,6 +734,8 @@ local function CreateTabButtons(section, tabNames)
                     obj.ElementFrame.Visible = isVisible 
                 elseif obj.UIElements and obj.UIElements.Main then
                     obj.UIElements.Main.Visible = isVisible
+                elseif obj.GroupFrame then
+                    obj.GroupFrame.Visible = isVisible
                 end
             end
         end
@@ -930,7 +760,7 @@ local function CreateTabButtons(section, tabNames)
         local btn = Instance.new("TextButton")
         btn.Name = name .. "_Btn"
         btn.Parent = ButtonContainer
-        btn.Size = UDim2.new(btnWidth, -4, 1, 0)
+        btn.Size = UDim2.new(btnWidth, -5, 1, 0)
         btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
         btn.AutoButtonColor = true
         btn.Text = ""
@@ -960,6 +790,8 @@ local function CreateTabButtons(section, tabNames)
                 elementObject.ElementFrame.Visible = false 
             elseif elementObject.UIElements and elementObject.UIElements.Main then
                 elementObject.UIElements.Main.Visible = false
+            elseif elementObject.GroupFrame then
+                elementObject.GroupFrame.Visible = false
             end
         end
     end
@@ -1096,8 +928,8 @@ local function LogicGamemodes()
 			end;
 		end;
 		local isFightingZone = string.find(currentMap, ":") and (string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense"));
-		if currentMap == "Dungeon" or currentMap == "Raid" or currentMap == "Defense" then
-			isFightingZone = true -- Detected folder directly
+		if currentMap == "Raid" or currentMap == "Defense" then
+			isFightingZone = true 
 		end
 		
 		if currentMap ~= "Unknown" then
@@ -1143,7 +975,7 @@ local function LogicGamemodes()
 				task.wait(0.1);
 			elseif inLobbyZone or wasInGamemode and (not isFightingZone) then
 				currentTargetObj = nil;
-				if LastZone and LastZone ~= "" and LastZone ~= "Dungeon" and LastZone ~= "Raid" and LastZone ~= "Defense" and LastZone ~= "Unknown" then
+				if LastZone and LastZone ~= "" and not string.find(LastZone, "Dungeon:") and not string.find(LastZone, "Raid:") and not string.find(LastZone, "Defense:") and LastZone ~= "Unknown" then
 					l:Notify({
 						Title = "Mode Finished",
 						Content = "In Lobby -> Returning to " .. LastZone,
@@ -1191,7 +1023,6 @@ local function LogicGamemodes()
 						end;
 					end;
 				end;
-				-- Added Defense Logic (Similar to Raid)
 				if not targetString then
 					for _, dName in pairs(Config.TargetDefense) do
 						local data = defenseDB[dName];
@@ -1211,7 +1042,7 @@ local function LogicGamemodes()
 				end;
 
 				if targetString then
-					if not string.find(currentMap, "Dungeon") and (not string.find(currentMap, "Raid")) and (not string.find(currentMap, "Defense")) then
+					if not string.find(currentMap, "Dungeon:") and (not string.find(currentMap, "Raid:")) and (not string.find(currentMap, "Defense:")) then
 						LastZone = currentMap;
 					end;
 					l:Notify({
@@ -1246,6 +1077,8 @@ task.spawn(function()
 			"Fruits",
 			"Haki",
 			"Breathing",
+			"MagicEyes",
+            "DemonArt",
 			"Organization",
 			"Titan"
 		};
@@ -1279,6 +1112,8 @@ task.spawn(function()
 			"Fruits",
 			"Haki",
 			"Breathing",
+			"MagicEyes",
+            "DemonArt",
 			"Organization",
 			"Titan"
 		};
@@ -1398,9 +1233,6 @@ local MainSection = Window:Section({
 	Opened = true
 });
 
--- ============================================================================
--- [FARMING MANAGER FROM FILE 1]
--- ============================================================================
 local FarmTab = MainSection:Tab({
 	Title = "Farming",
 	Icon = "swords"
@@ -1415,33 +1247,7 @@ local FarmTabs = CreateTabButtons(FarmingManagerSection, {
     "Gamemodes"
 })
 
--- Setup Icons for Farm Tabs
-task.spawn(function()
-    task.wait(0.1)
-    local function SetupButton(btnName, iconId)
-        local btn = FarmTabs.ButtonObjects[btnName]
-        if btn then
-            local lbl = btn:FindFirstChildOfClass("TextLabel")
-            if lbl then
-                lbl.Size = UDim2.new(1, -25, 1, 0)
-                lbl.Position = UDim2.new(0, 25, 0, 0)
-                lbl.TextXAlignment = Enum.TextXAlignment.Left
-            end
-
-            local iconImg = Instance.new("ImageLabel")
-            iconImg.Name = btnName.."Icon"
-            iconImg.Parent = btn
-            iconImg.Size = UDim2.fromOffset(20, 20)
-            iconImg.AnchorPoint = Vector2.new(0, 0.5)
-            iconImg.Position = UDim2.new(0, 0, 0.5, 0)
-            iconImg.BackgroundTransparency = 1
-            iconImg.Image = iconId
-            iconImg.ScaleType = Enum.ScaleType.Fit
-        end
-    end
-    SetupButton("Zone Farming", "rbxassetid://10709791437")
-    SetupButton("Gamemodes", "rbxassetid://10709752906")
-end)
+-- Icons removed as per user request
 
 EnemyDropdown = FarmingManagerSection:Dropdown({
 	Title = "Select Enemy",
@@ -1478,6 +1284,7 @@ FarmTabs:Add("Zone Farming", FarmToggle);
 local DgnDrop = FarmingManagerSection:Dropdown({
 	Title = "Select Dungeon",
 	Multi = true,
+	AllowNone = true,
 	Flag = "DungeonDiff_Cfg",
 	Values = dungeonList,
 	Callback = function(val)
@@ -1489,9 +1296,48 @@ local DgnDrop = FarmingManagerSection:Dropdown({
 	end
 });
 FarmTabs:Add("Gamemodes", DgnDrop);
+
+task.spawn(function()
+	while not Window.Destroyed do
+		local t = os.date("*t");
+		local currentTotalSeconds = t.min * 60 + t.sec;
+		local newList = {};
+		
+		for _, item in ipairs(dungeonList) do
+			local dName = item.Value;
+			local data = dungeonDB[dName];
+			if data then
+				local startMin = data.Time;
+				local startTotalSeconds = startMin * 60;
+				local diff = startTotalSeconds - currentTotalSeconds;
+				if diff < 0 then
+					diff = diff + 3600;
+				end;
+				local m = math.floor(diff / 60);
+				local s = diff % 60;
+				local timeStr = string.format("%02d:%02d", m, s);
+				
+				table.insert(newList, {
+					Title = item.Title,
+					Value = item.Value,
+					Desc = data.BaseDesc .. " | Starts in: " .. timeStr
+				});
+			else
+				table.insert(newList, item);
+			end;
+		end;
+		
+		if DgnDrop and DgnDrop.Refresh then
+			pcall(function()
+				DgnDrop:Refresh(newList);
+			end);
+		end;
+		task.wait(1);
+	end;
+end);
 local RaidDrop = FarmingManagerSection:Dropdown({
 	Title = "Select Raid",
-	Multi = true,
+	Multi = true,AllowNone = true,
 	Flag = "RaidDiff_Cfg",
 	Values = raidList,
 	Callback = function(val)
@@ -1503,10 +1349,10 @@ local RaidDrop = FarmingManagerSection:Dropdown({
 	end
 });
 FarmTabs:Add("Gamemodes", RaidDrop);
--- Added Defense Dropdown
 local DefenseDrop = FarmingManagerSection:Dropdown({
 	Title = "Select Defense",
 	Multi = true,
+	AllowNone = true,
 	Flag = "DefenseDiff_Cfg",
 	Values = defenseList,
 	Callback = function(val)
@@ -1518,6 +1364,86 @@ local DefenseDrop = FarmingManagerSection:Dropdown({
 	end
 });
 FarmTabs:Add("Gamemodes", DefenseDrop);
+
+task.spawn(function()
+	local function GetNextTimeDiff(times, currentMin, currentSec)
+		if not times or #times == 0 then return 0 end
+		table.sort(times)
+		
+		-- Find next time in current hour
+		for _, t in ipairs(times) do
+			if t > currentMin then
+				return (t - currentMin) * 60 - currentSec
+			end
+		end
+		
+		-- If not found, get first time in next hour
+		local firstTime = times[1]
+		return (60 - currentMin + firstTime) * 60 - currentSec
+	end
+
+	while not Window.Destroyed do
+		local t = os.date("*t")
+		local currentMin = t.min
+		local currentSec = t.sec
+		
+		-- Update Raid Dropdown
+		local newRaidList = {}
+		for _, item in ipairs(raidList) do
+			local rName = item.Value
+			local data = raidDB[rName]
+			if data and data.Times then
+				local diff = GetNextTimeDiff(data.Times, currentMin, currentSec)
+				if diff < 0 then diff = 0 end -- Should not happen with logic above but safety
+				
+				local m = math.floor(diff / 60)
+				local s = diff % 60
+				local timeStr = string.format("%02d:%02d", m, s)
+				
+				table.insert(newRaidList, {
+					Title = item.Title,
+					Value = item.Value,
+					Desc = data.BaseDesc .. " | Starts in: " .. timeStr
+				})
+			else
+				table.insert(newRaidList, item)
+			end
+		end
+		
+		if RaidDrop and RaidDrop.Refresh then
+			pcall(function() RaidDrop:Refresh(newRaidList) end)
+		end
+		
+		-- Update Defense Dropdown
+		local newDefenseList = {}
+		for _, item in ipairs(defenseList) do
+			local dName = item.Value
+			local data = defenseDB[dName]
+			if data and data.Times then
+				local diff = GetNextTimeDiff(data.Times, currentMin, currentSec)
+				if diff < 0 then diff = 0 end
+				
+				local m = math.floor(diff / 60)
+				local s = diff % 60
+				local timeStr = string.format("%02d:%02d", m, s)
+				
+				table.insert(newDefenseList, {
+					Title = item.Title,
+					Value = item.Value,
+					Desc = data.BaseDesc .. " | Starts in: " .. timeStr
+				})
+			else
+				table.insert(newDefenseList, item)
+			end
+		end
+		
+		if DefenseDrop and DefenseDrop.Refresh then
+			pcall(function() DefenseDrop:Refresh(newDefenseList) end)
+		end
+		
+		task.wait(1)
+	end
+end)
 
 local ModeToggle = FarmingManagerSection:Toggle({
 	Title = "Auto Join & Kill",
@@ -1538,11 +1464,232 @@ local GeneralTab = MainSection:Tab({
 	Title = "General",
 	Icon = "settings"
 });
-local RollSection = GeneralTab:Section({
-    Title = "Crate Roll",
-    Icon = "refresh-cw",
+
+-- GENERAL MANAGER SECTION
+local GeneralManagerSection = GeneralTab:Section({
+    Title = "General Manager",
+    Icon = "settings-2",
     Opened = true
-});
+})
+
+local GeneralTabs = CreateTabButtons(GeneralManagerSection, {
+    "Exchange",
+    "Crate Roll"
+})
+
+-- Icons removed as per user request
+
+local MaterialsModule = require(ReplicatedStorage.Scripts.Configs.General.Materials)
+local TradeTokenInfo = MaterialsModule.TradeToken
+local ExchangeList = {}
+for k, v in pairs(MaterialsModule) do
+    if v.Exchangeable and k ~= "TradeToken" then
+        table.insert(ExchangeList, {Title = v.Display, Value = k})
+    end
+end
+table.sort(ExchangeList, function(a,b) return a.Title < b.Title end)
+
+local SelectedExToken = nil
+local SelectedExIcon = nil
+local PrevMaterialsDigest = nil
+local ExchangeAmount = 1
+local ExchangeIsBuying = false -- false = Sell Material (Material -> Trade), true = Buy Material (Trade -> Material)
+
+-- Helper to get asset ID
+local function GetIcon(id)
+    return "rbxassetid://"..tostring(id)
+end
+
+local function GetMaterialsDigest()
+    local pData = (getgenv()).PlayerData
+    local keys = {}
+    if pData and pData.Materials then
+        for k,_ in pairs(pData.Materials) do
+            table.insert(keys, k)
+        end
+    end
+    table.sort(keys)
+    return table.concat(keys, "|")
+end
+
+-- UI Elements for Exchange
+local function BuildExchangeValues()
+    local pData = (getgenv()).PlayerData
+    local mats = {}
+    for _, item in ipairs(ExchangeList) do
+        local key = item.Value
+        local info = MaterialsModule[key]
+        local count = (pData and pData.Materials and pData.Materials[key]) or 0
+        local img = info and info.Template and GetIcon(info.Template) or ""
+        table.insert(mats, {
+            Title = item.Title,
+            Icon = img,
+            Value = key,
+        })
+    end
+    return mats
+end
+
+local PreviewGroup = GeneralManagerSection:Group()
+GeneralTabs:Add("Exchange", PreviewGroup)
+
+local MatPreview = PreviewGroup:Dropdown({
+    Title = "Select Token",
+    Desc = "None Selected",
+    Image = "rbxassetid://84366761557806",
+    ImageSize = 20,
+    Values = BuildExchangeValues(),
+    Multi = false,
+    Callback = function(val)
+        SelectedExToken = type(val) == "table" and val.Value or val
+        SelectedExIcon = type(val) == "table" and val.Icon or nil
+        local info = SelectedExToken and MaterialsModule[SelectedExToken] or nil
+        if info and info.Template then
+            MatPreview:SetTitle(info.Display)
+            MatPreview:SetIcon(SelectedExIcon or GetIcon(info.Template), 30)
+            local pData = (getgenv()).PlayerData
+            local matCount = pData and pData.Materials and pData.Materials[SelectedExToken] or 0
+            MatPreview:SetDesc(string.format("(%s/%s)", FormatNumber(ExchangeAmount), FormatNumber(matCount)))
+        end
+    end
+})
+MatPreview:Refresh(BuildExchangeValues())
+
+local TradePreview = PreviewGroup:Paragraph({
+    Title = TradeTokenInfo.Display,
+    Desc = "Waiting...",
+    Image = GetIcon(TradeTokenInfo.Template),
+    ImageSize = 40
+})
+
+
+local ExchangePercent = 1
+local ExSlider = GeneralManagerSection:Slider({
+    Title = "Amount %",
+    Min = 0,
+    Max = 100,
+    Default = 100,
+    Callback = function(v)
+        ExchangePercent = v / 100
+    end
+})
+GeneralTabs:Add("Exchange", ExSlider)
+
+local ExSwap = GeneralManagerSection:Toggle({
+    Title = "Swap Direction (Buy Mode)",
+    Desc = "OFF: Material -> Trade Token | ON: Trade Token -> Material",
+    Callback = function(v)
+        ExchangeIsBuying = v
+    end
+})
+GeneralTabs:Add("Exchange", ExSwap)
+
+local ExchangeButton = GeneralManagerSection:Button({
+    Title = "Exchange",
+    Icon = "check",
+    Callback = function()
+        if not SelectedExToken then 
+            l:Notify({Title="Error", Content="Select a token first!", Icon="alert-triangle"})
+            return 
+        end
+        
+        -- Logic args based on prompt: "TokenName", BooleanSwap, Amount
+        -- Example from prompt: "DemonToken", true, 1 (Buy Mode)
+        -- Example from prompt: "SayajinToken", false, 1 (Sell Mode)
+        
+        local args = {
+            "Convert Tokens",
+            {
+                SelectedExToken,
+                ExchangeIsBuying,
+                ExchangePercent
+            }
+        }
+        
+        if Reliable then
+            pcall(function()
+                Reliable:FireServer(unpack(args))
+            end)
+            l:Notify({Title="Exchange", Content="Request Sent!", Icon="send"})
+        end
+    end
+})
+GeneralTabs:Add("Exchange", ExchangeButton)
+
+-- Update Exchange UI Loop
+task.spawn(function()
+    while not Window.Destroyed do
+        local pData = (getgenv()).PlayerData
+        local digest = GetMaterialsDigest()
+        if digest ~= PrevMaterialsDigest then
+            MatPreview:Refresh(BuildExchangeValues())
+            PrevMaterialsDigest = digest
+        end
+        
+        -- Calculate Amounts based on Decompiled Logic
+        -- v2 logic: Buying (v_u4=true) -> 1, Selling (v_u4=false) -> 0.1
+        -- Formula: floor(Source * Percent * v2) // v2 * v2
+        -- Simplified:
+        -- Buy: floor(Trade * P)
+        -- Sell: floor(Mat * P / 10)
+        
+        local tradeCount = (pData and pData.Materials and pData.Materials["TradeToken"]) or 0
+        local matCount = (SelectedExToken and pData and pData.Materials and pData.Materials[SelectedExToken]) or 0
+        
+        local inputAmount = 0
+        local outputAmount = 0
+        
+        if ExchangeIsBuying then
+            -- Buying: TradeToken -> Material
+            -- Input: TradeToken * Percent
+            -- Output: Input (1:1 ratio)
+            inputAmount = math.floor(tradeCount * ExchangePercent)
+            outputAmount = inputAmount
+        else
+            -- Selling: Material -> TradeToken
+            -- Input: Material * Percent
+            -- Output: Material * Percent / 10 (10:1 ratio)
+            local rawInput = math.floor(matCount * ExchangePercent)
+            -- Logic from decompile: floor(Mat * P * 0.1) // 0.1 * 0.1
+            -- Effectively floor(rawInput / 10)
+            outputAmount = math.floor(rawInput / 10)
+            inputAmount = rawInput
+        end
+
+        if SelectedExToken then
+            local info = MaterialsModule[SelectedExToken]
+            if info and info.Template then
+                MatPreview:SetTitle(info.Display)
+                MatPreview:SetIcon(SelectedExIcon or GetIcon(info.Template), 30)
+                
+                -- Update Desc on Material Preview
+                -- If Buying: Show +Output
+                -- If Selling: Show -Input
+                if ExchangeIsBuying then
+                     MatPreview:SetDesc(string.format("Current: %s | +%s", FormatNumber(matCount), FormatNumber(outputAmount)))
+                else
+                     MatPreview:SetDesc(string.format("Current: %s | -%s", FormatNumber(matCount), FormatNumber(inputAmount)))
+                end
+            end
+            
+            -- Update Desc on Trade Token Preview
+            -- If Buying: Show -Input
+            -- If Selling: Show +Output
+            if ExchangeIsBuying then
+                TradePreview:SetDesc(string.format("Current: %s | -%s", FormatNumber(tradeCount), FormatNumber(inputAmount)))
+            else
+                TradePreview:SetDesc(string.format("Current: %s | +%s", FormatNumber(tradeCount), FormatNumber(outputAmount)))
+            end
+        else
+            MatPreview:SetTitle("Select Token")
+            MatPreview:SetDesc("None Selected")
+            MatPreview:SetIcon("rbxassetid://84366761557806", 20)
+            TradePreview:SetDesc("Waiting...")
+        end
+        task.wait(0.5)
+    end
+end)
+
 local rollToggleData = {
 	{
 		"Biju",
@@ -1575,6 +1722,14 @@ local rollToggleData = {
     {
         "Titan",
         "AutoRollTitan"
+    },
+    {
+        "MagicEyes",
+        "AutoRollMagicEyes"
+    },
+    {
+        "DemonArt",
+        "AutoRollDemonArt"
     }
 };
 local _rollGroup;
@@ -1582,7 +1737,8 @@ local _rollCount = 0;
 for i, rollData in ipairs(rollToggleData) do
     local rollType, configFlag = rollData[1], rollData[2];
     if _rollCount % 2 == 0 then
-        _rollGroup = RollSection:Group({});
+        _rollGroup = GeneralManagerSection:Group({});
+        GeneralTabs:Add("Crate Roll", _rollGroup)
     end;
     local tokenKey = RollMaterialMap[rollType];
     local displayName = (MaterialsModule[tokenKey] and MaterialsModule[tokenKey].Display) or (RollDisplayNames[rollType] or tokenKey);
@@ -1591,7 +1747,6 @@ for i, rollData in ipairs(rollToggleData) do
         Title = rollType,
         Flag = configFlag .. "_Cfg",
         Desc = displayName .. ": " .. FormatNumber(currentCount),
-        -- Desc = "Image on the left, centered between title and desc.",
         Image = GetRollIconAsset(rollType),
         ImageSize = 24,
         Callback = function(val)
@@ -1601,6 +1756,46 @@ for i, rollData in ipairs(rollToggleData) do
     RollToggleUI[rollType] = myToggle;
     _rollCount = _rollCount + 1;
 end;
+
+-- [Auto Lock Maxed Rolls & Update Counts]
+task.spawn(function()
+	while not Window.Destroyed do
+		local pData = (getgenv()).PlayerData;
+		if pData then
+            -- Update Counts
+            if pData.Materials then
+                for rollType, toggle in pairs(RollToggleUI) do
+                    local tokenKey = RollMaterialMap[rollType];
+                    local displayName = (MaterialsModule[tokenKey] and MaterialsModule[tokenKey].Display) or (RollDisplayNames[rollType] or tokenKey);
+                    local currentCount = pData.Materials[tokenKey] or 0;
+                    pcall(function()
+                        if not Window.Closed then
+                            toggle:SetDesc(displayName .. ": " .. FormatNumber(currentCount));
+                        end
+                    end);
+                end;
+            end;
+
+            -- Check Maxed
+			if pData.Vault then
+				for rollType, toggle in pairs(RollToggleUI) do
+					if pData.Vault[rollType] and pData.Vault[rollType]["7"] == true then
+						pcall(function()
+							toggle:Lock();
+							toggle:SetTitle(rollType .. " [MAX]");
+							if Config["AutoRoll" .. rollType] then
+								Config["AutoRoll" .. rollType] = false;
+								toggle:Set(false);
+							end;
+						end);
+					end;
+				end;
+			end;
+		end;
+		task.wait(1);
+	end;
+end);
+
 GeneralTab:Toggle({
 	Title = "Auto Fuse Weapons",
 	Flag = "AutoFuse_Cfg",
@@ -1707,9 +1902,6 @@ if StartEquipped then
 	end;
 end;
 
--- ============================================================================
--- [STATS UPGRADE MANAGER FROM FILE 1]
--- ============================================================================
 local YenTab = MainSection:Tab({
 	Title = "Upgrade",
 	Icon = "chevrons-up"
@@ -1774,23 +1966,41 @@ task.spawn(function()
     SetupButton("Trainer", GetTrainerIcon())
 end)
 
+local _yenGroup
+local _yenCount = 0
 for _, name in ipairs(upgradeOrder) do
     if YenUpgradeConfig[name] then
-        local myToggle = YenMainSection:Toggle({
+        if _yenCount % 2 == 0 then
+            _yenGroup = YenMainSection:Group({})
+            YenTabs:Add("Yen", _yenGroup)
+        end
+        local myToggle = _yenGroup:Toggle({
             Title = name, Flag = "AutoYen_" .. name, Callback = function(val) Config["AutoYen_" .. name] = val end
         })
         YenUpgradeToggleUI[name] = myToggle 
-        YenTabs:Add("Yen", myToggle) 
+        _yenCount = _yenCount + 1
     end
 end
 
 if TokenUpgradeConfig then
-    for name, configData in pairs(TokenUpgradeConfig) do
-        local myToggle = YenMainSection:Toggle({
+    local _tokenGroup
+    local _tokenCount = 0
+    local sortedTokens = {}
+    for name, _ in pairs(TokenUpgradeConfig) do
+        table.insert(sortedTokens, name)
+    end
+    table.sort(sortedTokens)
+
+    for _, name in ipairs(sortedTokens) do
+        if _tokenCount % 2 == 0 then
+            _tokenGroup = YenMainSection:Group({})
+            YenTabs:Add("Token", _tokenGroup)
+        end
+        local myToggle = _tokenGroup:Toggle({
             Title = name, Flag = "AutoToken_" .. name, Callback = function(val) Config["AutoToken_" .. name] = val end
         })
         TokenUpgradeToggleUI[name] = myToggle
-        YenTabs:Add("Token", myToggle)
+        _tokenCount = _tokenCount + 1
     end
 end
 
@@ -1800,8 +2010,14 @@ YenTabs:Add("Rank", RankProgressUI)
 local RankToggle = YenMainSection:Toggle({ Title = "Auto Rank Up", Flag = "AutoRankUp_Cfg", Callback = function(val) Config.AutoRankUp = val end })
 YenTabs:Add("Rank", RankToggle)
 
+local _chanceGroup
+local _chanceCount = 0
 for _, name in ipairs(ChanceUpgradeTypes) do
-    local myToggle = YenMainSection:Toggle({
+    if _chanceCount % 2 == 0 then
+        _chanceGroup = YenMainSection:Group({})
+        YenTabs:Add("Trainer", _chanceGroup)
+    end
+    local myToggle = _chanceGroup:Toggle({
         Title = "Loading...", 
         Flag = "AutoChance_" .. name, 
         Callback = function(val) 
@@ -1809,12 +2025,238 @@ for _, name in ipairs(ChanceUpgradeTypes) do
         end
     })
     ChanceUpgradeToggleUI[name] = myToggle
-    YenTabs:Add("Trainer", myToggle)
+    _chanceCount = _chanceCount + 1
 end
 
--- ============================================================================
--- [SETTINGS TAB & REST OF FILE 2]
--- ============================================================================
+if MagicEyesModule then
+    if _chanceCount % 2 == 0 then
+        _chanceGroup = YenMainSection:Group({})
+        YenTabs:Add("Trainer", _chanceGroup)
+    end
+    
+    local MagicEyeToggle = _chanceGroup:Toggle({
+        Title = "Magic Eye Upgrade",
+        Image = "rbxassetid://84366761557806",
+        ImageSize = 24,
+        Desc = "Loading...",
+        Flag = "AutoUpgradeMagicEyes_Cfg",
+        Callback = function(val)
+            Config.AutoUpgradeMagicEyes = val
+            if val then
+                task.spawn(function()
+                    while Config.AutoUpgradeMagicEyes and not Window.Destroyed do
+                        if Reliable then
+                            pcall(function()
+                                Reliable:FireServer("Crate Upgrade", {"MagicEyes"})
+                            end)
+                        end
+                        task.wait(1)
+                    end
+                end)
+            end
+        end
+    })
+    
+    task.spawn(function()
+        local function FormatBonus(bonuses)
+            local str = ""
+            for k, v in pairs(bonuses) do
+                local displayValue = math.floor(v * 10) / 10
+                str = str .. k .. ": " .. FormatNumber(displayValue) .. " "
+            end
+            return str
+        end
+
+        while not Window.Destroyed do
+            local pData = getgenv().PlayerData
+			local currentToken = pData.Materials.UpgradeEyeToken or 0;
+            if pData and pData.Attributes and pData.GachaLevel and MagicEyesModule and MagicEyesModule.List then
+                -- Get Equipped Magic Eye Index
+                local equippedEyeIndex = pData.Attributes.MagicEyes
+                
+                -- Get Upgrade Level
+                local currentLevel = pData.GachaLevel.MagicEyes[tostring(equippedEyeIndex)]
+                local equippedItemData = MagicEyesModule.List[equippedEyeIndex]
+				if not Window.Closed then
+					if equippedItemData and equippedItemData.Template then
+						MagicEyeToggle:SetImage(GetIcon(equippedItemData.Template))
+					end
+				end
+                
+                if currentLevel then
+
+                    local maxLevel = MagicEyesModule.MaxLevel or 50
+                    
+                    if currentLevel >= maxLevel then
+                        if not Window.Closed then
+                            MagicEyeToggle:SetDesc(string.format("Lvl: %s [MAX]", tostring(currentLevel)))
+                            MagicEyeToggle:Lock()
+                        end
+                        if Config.AutoUpgradeMagicEyes then
+                            Config.AutoUpgradeMagicEyes = false
+                            MagicEyeToggle:Set(false)
+                        end
+                    elseif equippedItemData and equippedItemData.Bonus then
+                        if not Window.Closed then
+                            local cost = MagicEyesModule.GetCost(currentLevel)
+                            local currentBonuses = MagicEyesModule.GetBonuses(currentLevel, equippedItemData.Bonus)
+                            local nextBonuses = MagicEyesModule.GetBonuses(currentLevel + 1, equippedItemData.Bonus)
+                            
+                            local bonusStr = FormatBonus(currentBonuses)
+                            local nextBonusStr = FormatBonus(nextBonuses)
+                            
+                            MagicEyeToggle:SetDesc(string.format(
+                                "Used: %s(%s)\nLvl: %s/%s\nCost: %s	\nUpgrade Eyes Shard: %s", 
+                                equippedItemData.Display, 
+                                equippedItemData.Rarity, 
+                                tostring(currentLevel), 
+                                tostring(maxLevel),
+                                FormatNumber(cost),
+                                FormatNumber(currentToken)
+                            ))
+                        end
+                        
+                        local cost = MagicEyesModule.GetCost(currentLevel)
+                        if currentToken < cost and Config.AutoUpgradeMagicEyes then
+                            Config.AutoUpgradeMagicEyes = false
+                            MagicEyeToggle:Set(false)
+                        end
+                    else
+                        -- Fallback if item data is missing
+                        if not Window.Closed then
+                            local cost = MagicEyesModule.GetCost and MagicEyesModule.GetCost(currentLevel) or "?"
+                            MagicEyeToggle:SetDesc(string.format("Lvl: %s | Cost: %s (Item Data Missing: Index %s)", tostring(currentLevel), FormatNumber(cost), tostring(equippedEyeIndex)))
+                        end
+                    end
+                else
+                    -- Fallback if level is not found
+                    if not Window.Closed then
+                        local itemName = equippedItemData and equippedItemData.Display or "Unknown"
+                        MagicEyeToggle:SetDesc(string.format("Used: %s | Lvl: 0 (Upgrade not started)", itemName))
+                    end
+                end
+            end
+            task.wait(1)
+        end
+    end)
+    _chanceCount = _chanceCount + 1
+end
+
+if DemonArtModule then
+    if _chanceCount % 2 == 0 then
+        _chanceGroup = YenMainSection:Group({})
+        YenTabs:Add("Trainer", _chanceGroup)
+    end
+    
+    local DemonArtToggle = _chanceGroup:Toggle({
+        Title = "Demon Art Upgrade",
+        Image = "rbxassetid://84366761557806", -- You might want to change this icon if there's a specific one for Demon Art
+        ImageSize = 24,
+        Desc = "Loading...",
+        Flag = "AutoUpgradeDemonArt_Cfg",
+        Callback = function(val)
+            Config.AutoUpgradeDemonArt = val
+            if val then
+                task.spawn(function()
+                    while Config.AutoUpgradeDemonArt and not Window.Destroyed do
+                        if Reliable then
+                            pcall(function()
+                                Reliable:FireServer("Crate Upgrade", {"DemonArt"})
+                            end)
+                        end
+                        task.wait(1)
+                    end
+                end)
+            end
+        end
+    })
+    
+    task.spawn(function()
+        local function FormatBonus(bonuses)
+            local str = ""
+            for k, v in pairs(bonuses) do
+                local displayValue = math.floor(v * 10) / 10
+                str = str .. k .. ": " .. FormatNumber(displayValue) .. " "
+            end
+            return str
+        end
+
+        while not Window.Destroyed do
+            local pData = getgenv().PlayerData
+            local currentToken = pData.Materials.UpgradeDemonToken or 0;
+            if pData and pData.Attributes and pData.GachaLevel and DemonArtModule and DemonArtModule.List then
+                -- Get Equipped Demon Art Index
+                local equippedArtIndex = pData.Attributes.DemonArt
+                
+                -- Get Upgrade Level
+                local currentLevel = pData.GachaLevel.DemonArt[tostring(equippedArtIndex)]
+                local equippedItemData = DemonArtModule.List[equippedArtIndex]
+				if not Window.Closed then
+					if equippedItemData and equippedItemData.Template then
+						DemonArtToggle:SetImage(GetIcon(equippedItemData.Template))
+					end
+				end
+                
+                if currentLevel then
+
+                    local maxLevel = DemonArtModule.MaxLevel or 50
+                    
+                    if currentLevel >= maxLevel then
+                        if not Window.Closed then
+                            DemonArtToggle:SetDesc(string.format("Lvl: %s [MAX]", tostring(currentLevel)))
+                            DemonArtToggle:Lock()
+                        end
+                        if Config.AutoUpgradeDemonArt then
+                            Config.AutoUpgradeDemonArt = false
+                            DemonArtToggle:Set(false)
+                        end
+                    elseif equippedItemData and equippedItemData.Bonus then
+                        if not Window.Closed then
+                            local cost = DemonArtModule.GetCost(currentLevel)
+                            local currentBonuses = DemonArtModule.GetBonuses(currentLevel, equippedItemData.Bonus)
+                            local nextBonuses = DemonArtModule.GetBonuses(currentLevel + 1, equippedItemData.Bonus)
+                            
+                            local bonusStr = FormatBonus(currentBonuses)
+                            local nextBonusStr = FormatBonus(nextBonuses)
+                            
+                            DemonArtToggle:SetDesc(string.format(
+                                "Used: %s(%s)\nLvl: %s/%s\nCost: %s	\nUpgrade Demon Art Shard: %s", 
+                                equippedItemData.Display, 
+                                equippedItemData.Rarity, 
+                                tostring(currentLevel), 
+                                tostring(maxLevel),
+                                FormatNumber(cost),
+                                FormatNumber(currentToken)
+                            ))
+                        end
+                        
+                        local cost = DemonArtModule.GetCost(currentLevel)
+                        if currentToken < cost and Config.AutoUpgradeDemonArt then
+                            Config.AutoUpgradeDemonArt = false
+                            DemonArtToggle:Set(false)
+                        end
+                    else
+                        -- Fallback if item data is missing
+                        if not Window.Closed then
+                            local cost = DemonArtModule.GetCost and DemonArtModule.GetCost(currentLevel) or "?"
+                            DemonArtToggle:SetDesc(string.format("Lvl: %s | Cost: %s (Item Data Missing: Index %s)", tostring(currentLevel), FormatNumber(cost), tostring(equippedArtIndex)))
+                        end
+                    end
+                else
+                    -- Fallback if level is not found
+                    if not Window.Closed then
+                        local itemName = equippedItemData and equippedItemData.Display or "Unknown"
+						local cost = DemonArtModule.GetCost(currentLevel+1)
+                        DemonArtToggle:SetDesc(string.format("Used: %s | Lvl: 0 (Upgrade not started)\nCost: %s", itemName, FormatNumber(cost)))
+                    end
+                end
+            end
+            task.wait(1)
+        end
+    end)
+    _chanceCount = _chanceCount + 1
+end
+
 local SettingsTab = Window:Tab({
 	Title = "Settings",
 	Icon = "settings-2"
@@ -1991,7 +2433,7 @@ task.spawn(function()
 			local req = GetRankRequirement(currentRank);
 			local currentBuff = GetRankBuff(currentRank);
 			local nextBuff = GetRankBuff(currentRank + 1);
-			if RankProgressUI then
+			if RankProgressUI and not Window.Closed then
 				local percent = req > 0 and math.clamp(currentMastery / req, 0, 1) or 0;
 				local barText = string.rep("█", math.floor(percent * 10)) .. string.rep("▒", 10 - math.floor(percent * 10));
 				local buffText = currentRank >= MaxRankCap and "Buff: " .. FormatNumber(currentBuff) .. "% (MAX)" or "Buff: " .. FormatNumber(currentBuff) .. "% >> " .. FormatNumber(nextBuff) .. "%";
@@ -2028,12 +2470,16 @@ task.spawn(function()
 					if toggle and toggle.SetTitle and toggle.SetDesc then
 						local maxLvl = configData.MaxLevel or 20;
 						if lvl >= maxLvl then
-							toggle:SetTitle(name .. " [MAX]");
-							toggle:Lock();
-							toggle:SetDesc(string.format("Maxed Out (Buff: +%s%%)", FormatNumber(GetYenBuff(name, lvl))));
+							if not Window.Closed then
+								toggle:SetTitle(name .. " [MAX]");
+								toggle:Lock();
+								toggle:SetDesc(string.format("Maxed Out (Buff: +%s%%)", FormatNumber(GetYenBuff(name, lvl))));
+							end
 						else
-							toggle:SetTitle(name .. " [" .. lvl .. "/" .. maxLvl .. "]");
-							toggle:SetDesc(string.format("Cost: %s | Buff: +%s%%", FormatNumber(cost), FormatNumber(GetYenBuff(name, lvl))));
+							if not Window.Closed then
+								toggle:SetTitle(name .. " [" .. lvl .. "/" .. maxLvl .. "]");
+								toggle:SetDesc(string.format("Cost: %s | Buff: +%s%%", FormatNumber(cost), FormatNumber(GetYenBuff(name, lvl))));
+							end
 							if Config["AutoYen_" .. name] and currentYen >= cost then
 								if Reliable then
 									pcall(function()
@@ -2056,12 +2502,16 @@ task.spawn(function()
 					if toggle and toggle.SetTitle and toggle.SetDesc then
 						local maxLvl = configData.MaxLevel or 999;
 						if lvl >= maxLvl then
-							toggle:Lock();
-							toggle:SetTitle(name .. " [MAX]");
-							toggle:SetDesc(string.format("Maxed Out (Buff: +%s%%)", FormatNumber(GetTokenBuff(name, lvl))));
+							if not Window.Closed then
+								toggle:Lock();
+								toggle:SetTitle(name .. " [MAX]");
+								toggle:SetDesc(string.format("Maxed Out (Buff: +%s%%)", FormatNumber(GetTokenBuff(name, lvl))));
+							end
 						else
-							toggle:SetTitle(name .. " [" .. lvl .. "/" .. maxLvl .. "]");
-							toggle:SetDesc(string.format("Cost: %s | Buff: +%s%%\nUpgrade Shard: %s", FormatNumber(cost), FormatNumber(GetTokenBuff(name, lvl)), FormatNumber(currentToken)));
+							if not Window.Closed then
+								toggle:SetTitle(name .. " [" .. lvl .. "/" .. maxLvl .. "]");
+								toggle:SetDesc(string.format("Cost: %s | Buff: +%s%%\nUpgrade Shard: %s", FormatNumber(cost), FormatNumber(GetTokenBuff(name, lvl)), FormatNumber(currentToken)));
+							end
 							if Config["AutoToken_" .. name] and currentToken >= cost then
 								if Reliable then
 									pcall(function()
@@ -2090,12 +2540,16 @@ task.spawn(function()
 							displayName = MaterialsModule[tokenKey].Display;
 						end;
 						if lvl >= maxLvl then
-							toggleObj:SetTitle(name .. " [MAX]");
-							toggleObj:SetDesc("Max Level Reached");
-							toggleObj:Lock();
+							if not Window.Closed then
+								toggleObj:SetTitle(name .. " [MAX]");
+								toggleObj:SetDesc("Max Level Reached");
+								toggleObj:Lock();
+							end
 						else
-							toggleObj:SetTitle(string.format("%s [%d/%d]", name, lvl, maxLvl));
-							toggleObj:SetDesc(string.format("Cost: %s | Chance: %s%%\n%s: %s", FormatNumber(cost), chance, displayName, FormatNumber(currentMaterial)));
+							if not Window.Closed then
+								toggleObj:SetTitle(string.format("%s [%d/%d]", name, lvl, maxLvl));
+								toggleObj:SetDesc(string.format("Cost: %s | Chance: %s%%\n%s: %s", FormatNumber(cost), chance, displayName, FormatNumber(currentMaterial)));
+							end
 							if Config["AutoChance_" .. name] then
 								if currentMaterial >= cost then
 									if Reliable then
@@ -2140,11 +2594,14 @@ task.spawn(function()
 	task.wait(1.5);
 	local DefaultConfig = "ANConfig";
 	local CM = Window.ConfigManager;
-	if not isfolder(("WindUI/" .. FolderPath .. "/config")) then
-		makefolder("WindUI/" .. FolderPath .. "/config");
+    
+    -- Path manual diupdate ke FolderPath
+	if not isfolder((FolderPath .. "/config")) then
+		makefolder(FolderPath .. "/config");
 	end;
 	pcall(function()
-		if isfile("WindUI/" .. FolderPath .. "/config/" .. DefaultConfig .. ".json") then
+        -- Path manual diupdate ke FolderPath
+		if isfile(FolderPath .. "/config/" .. DefaultConfig .. ".json") then
 			local cfg = CM:GetConfig(DefaultConfig) or CM:CreateConfig(DefaultConfig);
 			cfg:Load();
 			LoadZoneDB();
