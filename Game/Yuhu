@@ -1898,6 +1898,7 @@ local PreviewSection = AvatarSection:Paragraph({
 	Desc = "Select avatar to view",
 	Image = ""
 });
+local AlreadyUsedAvatar = "";
 local function UpdatePreview(avatarName)
 	local container = PreviewSection.ParagraphFrame.UIElements.Container;
 	if container:FindFirstChild("ViewportFrame") then
@@ -1940,7 +1941,10 @@ AvatarDropdown = AvatarSection:Dropdown({
 	Callback = function(selectedItem)
 		local avatarKey = type(selectedItem) == "table" and selectedItem.Value or selectedItem;
 		if avatarKey then
-			UpdatePreview(avatarKey);
+			if not Window.Closed and avatarKey ~= AlreadyUsedAvatar then
+				UpdatePreview(avatarKey);
+				AlreadyUsedAvatar = avatarKey;
+			end;
 			pcall(function()
 				Reliable:FireServer("Avatar Equip", {
 					avatarKey
@@ -1959,7 +1963,10 @@ if StartEquipped then
 	for _, item in ipairs(InitialAvatarList) do
 		if item.Value == StartEquipped then
 			AvatarDropdown:Select(item.Title);
-			UpdatePreview(StartEquipped);
+			if not Window.Closed and StartEquipped ~= AlreadyUsedAvatar then
+				UpdatePreview(StartEquipped);
+				AlreadyUsedAvatar = StartEquipped;
+			end;
 			break;
 		end;
 	end;
@@ -2510,20 +2517,6 @@ task.spawn(function()
 					pcall(function()
 						Reliable:FireServer("RankUp");
 					end);
-				end;
-			end;
-			local currentMorphCount = 0;
-			if Data.Morphs then
-				for _ in pairs(Data.Morphs) do
-					currentMorphCount = currentMorphCount + 1;
-				end;
-			end;
-			local currentEquipped = Data.Attributes.Avatar or "";
-			if currentMorphCount ~= LastMorphCount or currentEquipped ~= LastEquippedAvatar then
-				LastMorphCount = currentMorphCount;
-				LastEquippedAvatar = currentEquipped;
-				if AvatarDropdown and AvatarDropdown.Refresh then
-					AvatarDropdown:Refresh(GetAvatarsWithStats());
 				end;
 			end;
 			if Data.YenUpgrades then
