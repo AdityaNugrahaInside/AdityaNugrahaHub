@@ -852,14 +852,8 @@ local function LogicAutoFarm()
 					end;
 				end;
 			end;
-		elseif currentTargetObj.Uid and Unreliable then
-			pcall(function()
-				Unreliable:FireServer("Hit", {
-					currentTargetObj.Uid
-				});
-			end);
 		end;
-		task.wait(0.1);
+		task.wait(1);
 	end;
 end;
 local function MaintainAutoStatus()
@@ -950,6 +944,8 @@ local function LogicGamemodes()
 	local wasInGamemode = false;
 	local currentTargetObj = nil;
 	local refreshTimer = 0;
+	local lastTeleportedUid = nil;
+	local hasTeleportedToBossInRaid = false;
 	while Config.AutoDungeon do
 		if Window.Destroyed then
 			break;
@@ -969,6 +965,7 @@ local function LogicGamemodes()
 		if currentMap ~= "Unknown" then
 			if isFightingZone then
 				wasInGamemode = true;
+
 				if os.time() - refreshTimer > 5 then
 					RefreshEnemyData();
 					refreshTimer = os.time();
@@ -978,37 +975,69 @@ local function LogicGamemodes()
 						currentTargetObj = nil;
 					end;
 				end;
+
+				local isRaid = string.find(currentMap, "Raid")
+				local isDefense = string.find(currentMap, "Defense")
+
 				if not currentTargetObj and hrp then
 					local closest, minDst = nil, math.huge;
 					local myPos = hrp.Position;
+					local bossFound = false
+
 					for _, enemyList in pairs(GlobalEnemyMap) do
 						for _, enemyObj in ipairs(enemyList) do
 							if enemyObj.Alive == true and enemyObj.Data and enemyObj.Data.CFrame then
 								local dst = (myPos - enemyObj.Data.CFrame.Position).Magnitude;
+								local config = rawget(enemyObj, "Config")
+								local isBoss = config and config.Difficult == "Boss"
+
+								if isRaid and isBoss then
+									closest = enemyObj
+									bossFound = true
+									break
+								end
+
 								if dst < minDst then
 									minDst = dst;
-									closest = enemyObj;
+									if not bossFound then
+										closest = enemyObj;
+									end
 								end;
 							end;
 						end;
+						if bossFound then break end
 					end;
+
 					if closest then
 						currentTargetObj = closest;
 						if currentTargetObj.Data and currentTargetObj.Data.CFrame then
-							hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
+							local config = rawget(currentTargetObj, "Config")
+							local isBoss = config and config.Difficult == "Boss"
+							local targetUid = currentTargetObj.Uid
+
+							if isRaid then
+								if isBoss and (not hasTeleportedToBossInRaid) then
+									hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
+									hasTeleportedToBossInRaid = true;
+								end
+							elseif isDefense then
+								if lastTeleportedUid ~= targetUid then
+									hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
+									lastTeleportedUid = targetUid
+								end
+							else
+								-- Dungeon / Others: Always Teleport (Loop TP)
+								hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
+								lastTeleportedUid = targetUid -- Keep sync
+							end
 						end;
 					end;
-				end;
-				if currentTargetObj and currentTargetObj.Uid and Unreliable then
-					pcall(function()
-						Unreliable:FireServer("Hit", {
-							currentTargetObj.Uid
-						});
-					end);
 				end;
 				task.wait(0.1);
 			elseif inLobbyZone or wasInGamemode and (not isFightingZone) then
 				currentTargetObj = nil;
+				lastTeleportedUid = nil;
+				hasTeleportedToBossInRaid = false;
 				if LastZone and LastZone ~= "" and not string.find(LastZone, "Dungeon:") and not string.find(LastZone, "Raid:") and not string.find(LastZone, "Defense:") and LastZone ~= "Unknown" then
 					l:Notify({
 						Title = "Mode Finished",
@@ -2110,6 +2139,9 @@ if MagicEyesModule then
                 
                 -- Get Upgrade Level
                 local currentLevel = pData.GachaLevel.MagicEyes[tostring(equippedEyeIndex)]
+				if currentLevel <= 0 then
+					currentLevel = 1					
+				end
                 local equippedItemData = MagicEyesModule.List[equippedEyeIndex]
 				if not Window.Closed then
 					if equippedItemData and equippedItemData.Template then
@@ -2224,6 +2256,9 @@ if DemonArtModule then
                 
                 -- Get Upgrade Level
                 local currentLevel = pData.GachaLevel.DemonArt[tostring(equippedArtIndex)]
+				if currentLevel <= 0 then
+					currentLevel = 1					
+				end
                 local equippedItemData = DemonArtModule.List[equippedArtIndex]
 				if not Window.Closed then
 					if equippedItemData and equippedItemData.Template then
@@ -2280,7 +2315,7 @@ if DemonArtModule then
                     -- Fallback if level is not found
                     if not Window.Closed then
                         local itemName = equippedItemData and equippedItemData.Display or "Unknown"
-						local cost = DemonArtModule.GetCost(currentLevel+1)
+						local cost = DemonArtModule.GetCost(currentLevel)
                         DemonArtToggle:SetDesc(string.format("Used: %s | Lvl: 0 (Upgrade not started)\nCost: %s", itemName, FormatNumber(cost)))
                     end
                 end
