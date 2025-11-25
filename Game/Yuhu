@@ -1874,8 +1874,8 @@ GeneralTab:Toggle({
 						pcall(function()
 							Reliable:FireServer("Weapon Fuse All");
 						end);
-					end;)
-					task.wait(10);
+					end;
+					task.wait(5);
 				end;
 			end);
 		end;
@@ -1931,7 +1931,6 @@ local function UpdatePreview(avatarName)
 		end;
 	end;
 end;
-local AlreadyUsedAvatar = nil;
 AvatarDropdown = AvatarSection:Dropdown({
 	Title = "Select Avatar",
 	Description = "Loading...",
@@ -1941,20 +1940,12 @@ AvatarDropdown = AvatarSection:Dropdown({
 	Callback = function(selectedItem)
 		local avatarKey = type(selectedItem) == "table" and selectedItem.Value or selectedItem;
 		if avatarKey then
-			if avatarKey ~= AlreadyUsedAvatar then
-				if not Window.Closed then
-					UpdatePreview(avatarKey);
-				end;
-				AlreadyUsedAvatar = avatarKey;
-			end;
+			UpdatePreview(avatarKey);
 			pcall(function()
 				Reliable:FireServer("Avatar Equip", {
 					avatarKey
 				});
 			end);
-			if not Window.Closed then
-				AvatarDropdown:Refresh(GetAvatarsWithStats());
-			end;
 		end;
 	end
 });
@@ -1969,7 +1960,6 @@ if StartEquipped then
 		if item.Value == StartEquipped then
 			AvatarDropdown:Select(item.Title);
 			UpdatePreview(StartEquipped);
-			AlreadyUsedAvatar = StartEquipped;
 			break;
 		end;
 	end;
@@ -2528,8 +2518,10 @@ task.spawn(function()
 					currentMorphCount = currentMorphCount + 1;
 				end;
 			end;
-			if currentMorphCount ~= LastMorphCount then
+			local currentEquipped = Data.Attributes.Avatar or "";
+			if currentMorphCount ~= LastMorphCount or currentEquipped ~= LastEquippedAvatar then
 				LastMorphCount = currentMorphCount;
+				LastEquippedAvatar = currentEquipped;
 				if AvatarDropdown and AvatarDropdown.Refresh then
 					AvatarDropdown:Refresh(GetAvatarsWithStats());
 				end;
