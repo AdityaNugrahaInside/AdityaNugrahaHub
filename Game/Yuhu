@@ -558,6 +558,8 @@ local function RefreshEnemyData()
 	CurrentZoneEnemiesCache = uiList;
 	return uiList;
 end;
+
+
 local function GetAvatarsWithStats()
 	local list, zoneOrders, machineStats = {}, {}, {};
 	local Data = (getgenv()).PlayerData;
@@ -916,6 +918,34 @@ local function GetCurrentMapStatus()
 	end;
 	return "Unknown";
 end;
+
+-- [MODIFIKASI: EVENT LISTENER UNTUK ENEMIES]
+task.spawn(function()
+    local EnemiesFolder = Workspace:WaitForChild("Enemies", 5)
+    if EnemiesFolder then
+        local Debounce = false
+        local function TriggerRefresh()
+            if Debounce then return end
+            
+            -- Cek apakah kita berada di Gamemode (Dungeon/Raid/Defense)
+            -- Jika TIDAK di gamemode, JANGAN refresh otomatis (hanya lewat Teleport)
+            local currentMap = GetCurrentMapStatus()
+            local isGamemode = string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense")
+            
+            if not isGamemode then
+                return
+            end
+
+            Debounce = true
+            task.wait(1.5) -- Tunggu sebentar agar enemy loading sempurna
+            RefreshEnemyData()
+            Debounce = false
+        end
+        
+        EnemiesFolder.ChildAdded:Connect(TriggerRefresh)
+        EnemiesFolder.ChildRemoved:Connect(TriggerRefresh)
+    end
+end);
 local function LogicGamemodes()
 	local wasInGamemode = false;
 	local currentTargetObj = nil;
@@ -939,7 +969,7 @@ local function LogicGamemodes()
 		if currentMap ~= "Unknown" then
 			if isFightingZone then
 				wasInGamemode = true;
-				if os.time() - refreshTimer > 1 then
+				if os.time() - refreshTimer > 5 then
 					RefreshEnemyData();
 					refreshTimer = os.time();
 				end;
@@ -2380,10 +2410,6 @@ task.spawn(function()
 		task.wait(0.5);
 		if IsTeleporting then
 			continue;
-		end;
-		if os.time() - refreshTick > 2 then
-			RefreshEnemyData();
-			refreshTick = os.time();
 		end;
 		local detectedZone = GetCurrentMapStatus();
 		if detectedZone and detectedZone ~= "Unknown" and detectedZone ~= prevZone then
