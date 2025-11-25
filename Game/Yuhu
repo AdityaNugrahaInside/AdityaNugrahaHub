@@ -1581,7 +1581,8 @@ local GeneralManagerSection = GeneralTab:Section({
 
 local GeneralTabs = CreateTabButtons(GeneralManagerSection, {
     "Exchange",
-    "Crate Roll"
+    "Crate Roll",
+    "Avatar"
 })
 
 local MaterialsModule = require(ReplicatedStorage.Scripts.Configs.General.Materials)
@@ -1899,23 +1900,12 @@ GeneralTab:Toggle({
 		end;
 	end
 });
-GeneralTab:Button({
-	Title = "FPS Booster",
-	Icon = "zap",
-	Callback = function()
-		(loadstring(game:HttpGet("https://raw.githubusercontent.com/khuyenbd88/RobloxKaitun/refs/heads/main/FPS%20Booster.lua")))();
-	end
-});
-local AvatarSection = GeneralTab:Section({
-	Title = "Avatar Manager",
-	Icon = "shirt",
-	Opened = true
-});
-local PreviewSection = AvatarSection:Paragraph({
+local PreviewSection = GeneralManagerSection:Paragraph({
 	Title = "Avatar Preview",
 	Desc = "Select avatar to view",
 	Image = ""
 });
+GeneralTabs:Add("Avatar", PreviewSection);
 local AlreadyUsedAvatar = "";
 local function UpdatePreview(avatarName)
 	local container = PreviewSection.ParagraphFrame.UIElements.Container;
@@ -1950,7 +1940,7 @@ local function UpdatePreview(avatarName)
 		end;
 	end;
 end;
-AvatarDropdown = AvatarSection:Dropdown({
+AvatarDropdown = GeneralManagerSection:Dropdown({
 	Title = "Select Avatar",
 	Description = "Loading...",
 	Values = {},
@@ -1958,19 +1948,27 @@ AvatarDropdown = AvatarSection:Dropdown({
 	Flag = "Avatar_Select_Cfg",
 	Callback = function(selectedItem)
 		local avatarKey = type(selectedItem) == "table" and selectedItem.Value or selectedItem;
-		if avatarKey then
-			if not Window.Closed and avatarKey ~= AlreadyUsedAvatar then
-				UpdatePreview(avatarKey);
-				AlreadyUsedAvatar = avatarKey;
-			end;
-			pcall(function()
-				Reliable:FireServer("Avatar Equip", {
-					avatarKey
-				});
-			end);
+		
+		-- Guard: Prevent None/nil/empty string
+		if not avatarKey or avatarKey == "" or avatarKey == "None" then
+			return;
 		end;
+		
+		-- Update preview only if different and window open
+		if not Window.Closed and avatarKey ~= AlreadyUsedAvatar then
+			UpdatePreview(avatarKey);
+			AlreadyUsedAvatar = avatarKey;
+		end;
+		
+		-- Send to server
+		pcall(function()
+			Reliable:FireServer("Avatar Equip", {
+				avatarKey
+			});
+		end);
 	end
 });
+GeneralTabs:Add("Avatar", AvatarDropdown);
 repeat
 	task.wait();
 until (getgenv()).PlayerData;
