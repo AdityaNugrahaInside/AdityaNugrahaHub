@@ -6,9 +6,8 @@ until game:IsLoaded();
 loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/loading.lua"))()
 
 -- [MODIFIKASI 1: UPDATE FOLDER PATH]
--- Path dasar sekarang diarahkan langsung ke ANUI/AnimeWeapons
 local FolderPath = "ANUI/AnimeWeapons"; 
-local ExpiryFile = FolderPath .. "/ANHub_Key_Timer.txt"; -- File timer ditaruh di dalam folder agar rapi
+local ExpiryFile = FolderPath .. "/ANHub_Key_Timer.txt"; 
 local ZoneDBFile = "Zone_Database.json";
 
 local function SecureWipe()
@@ -18,13 +17,11 @@ local function SecureWipe()
 	local currentTime = os.time();
 	local isExpired = false;
 	
-    -- Cek path baru
 	if isfile(ExpiryFile) then
 		local savedTime = tonumber(readfile(ExpiryFile)) or 0;
 		if currentTime > savedTime then
 			isExpired = true;
 		end;
-	-- Cek folder lama untuk pembersihan (Opsional, menjaga kebersihan file lama)
 	elseif isfolder(FolderPath) then
 		isExpired = true;
 	end;
@@ -34,7 +31,6 @@ local function SecureWipe()
 			delfile(ExpiryFile);
 		end;
 		
-        -- List folder yang mungkin berisi data lama/baru untuk dibersihkan jika expired
 		local PossiblePaths = {
 			"ANUI/AnimeWeapons",
 		};
@@ -65,7 +61,6 @@ local RunService = game:GetService("RunService");
 local Reliable = (ReplicatedStorage:WaitForChild("Reply")):WaitForChild("Reliable");
 local Unreliable = (ReplicatedStorage:WaitForChild("Reply")):WaitForChild("Unreliable");
 
--- Pastikan folder utama ada
 if not isfolder("ANUI") then makefolder("ANUI") end
 if not isfolder(FolderPath) then makefolder(FolderPath) end
 
@@ -227,12 +222,35 @@ local function InitAutoReconnectBypass()
 	end);
 end;
 task.spawn(InitAutoReconnectBypass);
+
+-- [MODULE LOADING SECTION]
 local ConfigsPath = ReplicatedStorage.Scripts.Configs;
 local YenModule = require(ConfigsPath.Machines.YenUpgrades);
 local TokenModule = require(ConfigsPath.Machines.TokenUpgrades);
 local RankModule = require(ConfigsPath.Machines.RankUp);
 local UtilsModule = require(ConfigsPath.Utility.Utils);
 local MaterialsModule = require(ConfigsPath.General.Materials);
+
+-- [MODIFIKASI BARU: LOAD WEAPONS DATABASE]
+local WeaponsModule = {}
+pcall(function()
+    -- Mengambil data dari MultipleZones/Weapons untuk mendapatkan Template ID senjata
+    local MZPath = ConfigsPath:FindFirstChild("MultipleZones") or ConfigsPath:FindFirstChild("Multiple Zones")
+    if MZPath and MZPath:FindFirstChild("Weapons") then
+        local WeaponsFolder = MZPath.Weapons
+        for _, module in pairs(WeaponsFolder:GetChildren()) do
+            if module:IsA("ModuleScript") then
+                local success, data = pcall(require, module)
+                if success and type(data) == "table" then
+                    for weaponId, weaponData in pairs(data) do
+                        WeaponsModule[weaponId] = weaponData
+                    end
+                end
+            end
+        end
+    end
+end)
+
 local ChanceModules = {};
 local ChancePath = ReplicatedStorage.Scripts.Configs:FindFirstChild("ChanceUpgrades");
 if ChancePath then
@@ -315,7 +333,6 @@ local RollTypeToConfig = {
 };
 
 local function LoadZoneDB()
-    -- Path manual diupdate ke FolderPath
 	if isfile(FolderPath .. "/" .. ZoneDBFile) then
 		local success, result = pcall(function()
 			return HttpService:JSONDecode(readfile(FolderPath .. "/" .. ZoneDBFile));
@@ -358,7 +375,6 @@ local function SaveZoneConfig(zone, selectedItem)
 	Config.SelectedEnemy = val;
 	Config.ZoneConfigurations[zone] = savedEntry;
 	
-    -- Path manual diupdate ke FolderPath
 	if not isfolder(FolderPath) then
 		makefolder(FolderPath);
 	end;
@@ -519,6 +535,36 @@ LoadDefenseData();
 for _, rollType in ipairs(AllRollTypes) do
 	LoadRollData(rollType);
 end;
+
+-- [MODIFIKASI BARU: Helper Function untuk Mendapatkan Icon dari ChanceReward]
+local function GetRewardAssetId(rewardKey)
+    if not rewardKey then return nil end
+    -- Kunci bisa berupa "Weapons.WildKatana" atau "Materials.BreathingToken.5"
+    local parts = string.split(rewardKey, ".")
+    local typeCategory = parts[1] -- "Weapons" atau "Materials"
+    local itemName = parts[2] -- "WildKatana" atau "BreathingToken"
+    
+    local templateId = nil
+    
+    if typeCategory == "Materials" and MaterialsModule[itemName] then
+        templateId = MaterialsModule[itemName].Template
+    elseif typeCategory == "Weapons" and WeaponsModule[itemName] then
+        templateId = WeaponsModule[itemName].Template
+    end
+    
+    if templateId then
+        -- Format Asset ID
+        local idStr = tostring(templateId)
+        if not idStr:find("rbxassetid://") then
+            return "rbxassetid://" .. idStr
+        else
+            return idStr
+        end
+    end
+    return nil
+end
+
+-- [MODIFIKASI BARU: UPDATE RefreshEnemyData]
 local function RefreshEnemyData()
 	local uiList = {};
 	local seenForUI = {};
@@ -542,11 +588,26 @@ local function RefreshEnemyData()
 				table.insert(GlobalEnemyMap[realName], v);
 				if not seenForUI[realName] then
 					seenForUI[realName] = true;
+                    
+                    -- [BARU: Ambil Gambar dari ChanceReward]
+                    local rewardImages = {}
+                    if config.ChanceReward then
+                        for rewardKey, _ in pairs(config.ChanceReward) do
+                            local img = GetRewardAssetId(rewardKey)
+                            if img then
+                                table.insert(rewardImages, img)
+                            end
+                        end
+                    end
+                    -- Urutkan agar rapi (opsional)
+                    table.sort(rewardImages)
+
 					table.insert(uiList, {
 						Title = display .. " (" .. (config.Difficult or "Normal") .. ")",
 						Value = realName,
 						Desc = "HP: " .. FormatNumber((config.MaxHealth or 0)),
-						HP = config.MaxHealth or 0
+						HP = config.MaxHealth or 0,
+                        Images = rewardImages -- Field Images ditambahkan untuk Dropdown
 					});
 				end;
 			end;
@@ -579,7 +640,7 @@ local function GetAvatarsWithStats()
 			machineStats = r;
 		end;
 	end;
-	-- [MODIFIKASI: DETEKSI NAMA FOLDER OTOMATIS]
+	
 	local ConfigsFolder = ReplicatedStorage.Scripts.Configs
 	local MZFolder = ConfigsFolder:FindFirstChild("Multiple Zones") or ConfigsFolder:FindFirstChild("MultipleZones")
 	local zonesPath = MZFolder and MZFolder:FindFirstChild("Enemies")
@@ -646,19 +707,18 @@ local function GetAvatarsWithStats()
 end;
 local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/main.lua"))()
 
--- [MODIFIKASI 2: KEYBIND DAN FOLDER]
 local Window = l:CreateWindow({
 	Title = "AN Hub - Anime Weapons",
 	Icon = "rbxassetid://84366761557806",
 	Author = "Aditya Nugraha",
-	Folder = "AnimeWeapons", -- Folder untuk Library (Otomatis menjadi ANUI/AnimeWeapons/config)
+	Folder = "AnimeWeapons",
 	Size = UDim2.fromOffset(580, 460),
 	Acrylic = true,
 	Theme = "Dark",
 	Resizable = true,
 	SideBarWidth = 170,
 	HideSearchBar = true,
-	ToggleKey = Enum.KeyCode.RightControl, -- Menambahkan Keybind (Right Ctrl)
+	ToggleKey = Enum.KeyCode.RightControl,
 	KeySystem = {
 		Enabled = true,
 		Title = "ANHub Access",
@@ -913,7 +973,6 @@ local function GetCurrentMapStatus()
 	return "Unknown";
 end;
 
--- [MODIFIKASI: EVENT LISTENER UNTUK ENEMIES]
 task.spawn(function()
     local EnemiesFolder = Workspace:WaitForChild("Enemies", 5)
     if EnemiesFolder then
@@ -921,8 +980,6 @@ task.spawn(function()
         local function TriggerRefresh()
             if Debounce then return end
             
-            -- Cek apakah kita berada di Gamemode (Dungeon/Raid/Defense)
-            -- Jika TIDAK di gamemode, JANGAN refresh otomatis (hanya lewat Teleport)
             local currentMap = GetCurrentMapStatus()
             local isGamemode = string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense")
             
@@ -931,7 +988,7 @@ task.spawn(function()
             end
 
             Debounce = true
-            task.wait(1.5) -- Tunggu sebentar agar enemy loading sempurna
+            task.wait(1.5) 
             RefreshEnemyData()
             Debounce = false
         end
@@ -1020,15 +1077,9 @@ local function LogicGamemodes()
 									hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
 									hasTeleportedToBossInRaid = true;
 								end
-							elseif isDefense then
-								if lastTeleportedUid ~= targetUid then
-									hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
-									lastTeleportedUid = targetUid
-								end
 							else
-								-- Dungeon / Others: Always Teleport (Loop TP)
 								hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
-								lastTeleportedUid = targetUid -- Keep sync
+								lastTeleportedUid = targetUid 
 							end
 						end;
 					end;
@@ -1310,12 +1361,13 @@ local FarmTabs = CreateTabButtons(FarmingManagerSection, {
     "Gamemodes"
 })
 
--- Icons removed as per user request
-
+-- [MODIFIKASI: DROPDOWN UNTUK ENEMIES DENGAN IMAGES]
 EnemyDropdown = FarmingManagerSection:Dropdown({
 	Title = "Select Enemy",
 	Multi = false,
 	Values = {},
+    ImageSize = UDim2.fromOffset(20, 20), -- Mengatur ukuran gambar
+    ImagePadding = 6, -- Jarak antar gambar
 	Flag = "TargetEnemies_Cfg",
 	Callback = function(selectedItem)
 		if IsLoadingConfig then
@@ -1433,14 +1485,12 @@ task.spawn(function()
 		if not times or #times == 0 then return 0 end
 		table.sort(times)
 		
-		-- Find next time in current hour
 		for _, t in ipairs(times) do
 			if t > currentMin then
 				return (t - currentMin) * 60 - currentSec
 			end
 		end
 		
-		-- If not found, get first time in next hour
 		local firstTime = times[1]
 		return (60 - currentMin + firstTime) * 60 - currentSec
 	end
@@ -1450,14 +1500,13 @@ task.spawn(function()
 		local currentMin = t.min
 		local currentSec = t.sec
 		
-		-- Update Raid Dropdown
 		local newRaidList = {}
 		for _, item in ipairs(raidList) do
 			local rName = item.Value
 			local data = raidDB[rName]
 			if data and data.Times then
 				local diff = GetNextTimeDiff(data.Times, currentMin, currentSec)
-				if diff < 0 then diff = 0 end -- Should not happen with logic above but safety
+				if diff < 0 then diff = 0 end 
 				
 				local m = math.floor(diff / 60)
 				local s = diff % 60
@@ -1477,7 +1526,6 @@ task.spawn(function()
 			pcall(function() RaidDrop:Refresh(newRaidList) end)
 		end
 		
-		-- Update Defense Dropdown
 		local newDefenseList = {}
 		for _, item in ipairs(defenseList) do
 			local dName = item.Value
@@ -1520,15 +1568,11 @@ local ModeToggle = FarmingManagerSection:Toggle({
 });
 FarmTabs:Add("Gamemodes", ModeToggle);
 
--- ============================================================================
--- [GENERAL TAB & REST OF FILE 2]
--- ============================================================================
 local GeneralTab = MainSection:Tab({
 	Title = "General",
 	Icon = "settings"
 });
 
--- GENERAL MANAGER SECTION
 local GeneralManagerSection = GeneralTab:Section({
     Title = "General Manager",
     Icon = "settings-2",
@@ -1539,8 +1583,6 @@ local GeneralTabs = CreateTabButtons(GeneralManagerSection, {
     "Exchange",
     "Crate Roll"
 })
-
--- Icons removed as per user request
 
 local MaterialsModule = require(ReplicatedStorage.Scripts.Configs.General.Materials)
 local TradeTokenInfo = MaterialsModule.TradeToken
@@ -1556,9 +1598,8 @@ local SelectedExToken = nil
 local SelectedExIcon = nil
 local PrevMaterialsDigest = nil
 local ExchangeAmount = 1
-local ExchangeIsBuying = false -- false = Sell Material (Material -> Trade), true = Buy Material (Trade -> Material)
+local ExchangeIsBuying = false 
 
--- Helper to get asset ID
 local function GetIcon(id)
     return "rbxassetid://"..tostring(id)
 end
@@ -1575,7 +1616,6 @@ local function GetMaterialsDigest()
     return table.concat(keys, "|")
 end
 
--- UI Elements for Exchange
 local function BuildExchangeValues()
     local pData = (getgenv()).PlayerData
     local mats = {}
@@ -1656,10 +1696,6 @@ local ExchangeButton = GeneralManagerSection:Button({
             return 
         end
         
-        -- Logic args based on prompt: "TokenName", BooleanSwap, Amount
-        -- Example from prompt: "DemonToken", true, 1 (Buy Mode)
-        -- Example from prompt: "SayajinToken", false, 1 (Sell Mode)
-        
         local args = {
             "Convert Tokens",
             {
@@ -1679,7 +1715,6 @@ local ExchangeButton = GeneralManagerSection:Button({
 })
 GeneralTabs:Add("Exchange", ExchangeButton)
 
--- Update Exchange UI Loop
 task.spawn(function()
     while not Window.Destroyed do
         local pData = (getgenv()).PlayerData
@@ -1689,13 +1724,6 @@ task.spawn(function()
             PrevMaterialsDigest = digest
         end
         
-        -- Calculate Amounts based on Decompiled Logic
-        -- v2 logic: Buying (v_u4=true) -> 1, Selling (v_u4=false) -> 0.1
-        -- Formula: floor(Source * Percent * v2) // v2 * v2
-        -- Simplified:
-        -- Buy: floor(Trade * P)
-        -- Sell: floor(Mat * P / 10)
-        
         local tradeCount = (pData and pData.Materials and pData.Materials["TradeToken"]) or 0
         local matCount = (SelectedExToken and pData and pData.Materials and pData.Materials[SelectedExToken]) or 0
         
@@ -1703,18 +1731,10 @@ task.spawn(function()
         local outputAmount = 0
         
         if ExchangeIsBuying then
-            -- Buying: TradeToken -> Material
-            -- Input: TradeToken * Percent
-            -- Output: Input (1:1 ratio)
             inputAmount = math.floor(tradeCount * ExchangePercent)
             outputAmount = inputAmount
         else
-            -- Selling: Material -> TradeToken
-            -- Input: Material * Percent
-            -- Output: Material * Percent / 10 (10:1 ratio)
             local rawInput = math.floor(matCount * ExchangePercent)
-            -- Logic from decompile: floor(Mat * P * 0.1) // 0.1 * 0.1
-            -- Effectively floor(rawInput / 10)
             outputAmount = math.floor(rawInput / 10)
             inputAmount = rawInput
         end
@@ -1725,9 +1745,6 @@ task.spawn(function()
                 MatPreview:SetTitle(info.Display)
                 MatPreview:SetIcon(SelectedExIcon or GetIcon(info.Template), 30)
                 
-                -- Update Desc on Material Preview
-                -- If Buying: Show +Output
-                -- If Selling: Show -Input
                 if ExchangeIsBuying then
                      MatPreview:SetDesc(string.format("Current: %s | +%s", FormatNumber(matCount), FormatNumber(outputAmount)))
                 else
@@ -1735,9 +1752,6 @@ task.spawn(function()
                 end
             end
             
-            -- Update Desc on Trade Token Preview
-            -- If Buying: Show -Input
-            -- If Selling: Show +Output
             if ExchangeIsBuying then
                 TradePreview:SetDesc(string.format("Current: %s | -%s", FormatNumber(tradeCount), FormatNumber(inputAmount)))
             else
@@ -1820,12 +1834,10 @@ for i, rollData in ipairs(rollToggleData) do
     _rollCount = _rollCount + 1;
 end;
 
--- [Auto Lock Maxed Rolls & Update Counts]
 task.spawn(function()
 	while not Window.Destroyed do
 		local pData = (getgenv()).PlayerData;
 		if pData then
-            -- Update Counts
             if pData.Materials then
                 for rollType, toggle in pairs(RollToggleUI) do
                     local tokenKey = RollMaterialMap[rollType];
@@ -1839,10 +1851,16 @@ task.spawn(function()
                 end;
             end;
 
-            -- Check Maxed
 			if pData.Vault then
 				for rollType, toggle in pairs(RollToggleUI) do
-					if pData.Vault[rollType] and pData.Vault[rollType]["7"] == true then
+					local isMaxed = false;
+					if rollType == "Race" and pData.Vault[rollType] and pData.Vault[rollType]["6"] == true then
+						isMaxed = true;
+					elseif pData.Vault[rollType] and pData.Vault[rollType]["7"] == true then
+						isMaxed = true;
+					end;
+					
+					if isMaxed then
 						pcall(function()
 							toggle:Lock();
 							toggle:SetTitle(rollType .. " [MAX]");
@@ -2141,10 +2159,7 @@ if MagicEyesModule then
             local pData = getgenv().PlayerData
 			local currentToken = pData.Materials.UpgradeEyeToken or 0;
             if pData and pData.Attributes and pData.GachaLevel and MagicEyesModule and MagicEyesModule.List then
-                -- Get Equipped Magic Eye Index
                 local equippedEyeIndex = pData.Attributes.MagicEyes
-                
-                -- Get Upgrade Level
                 local currentLevel = pData.GachaLevel.MagicEyes[tostring(equippedEyeIndex)]
 				if currentLevel <= 0 then
 					currentLevel = 1					
@@ -2195,14 +2210,12 @@ if MagicEyesModule then
                             MagicEyeToggle:Set(false)
                         end
                     else
-                        -- Fallback if item data is missing
                         if not Window.Closed then
                             local cost = MagicEyesModule.GetCost and MagicEyesModule.GetCost(currentLevel) or "?"
                             MagicEyeToggle:SetDesc(string.format("Lvl: %s | Cost: %s (Item Data Missing: Index %s)", tostring(currentLevel), FormatNumber(cost), tostring(equippedEyeIndex)))
                         end
                     end
                 else
-                    -- Fallback if level is not found
                     if not Window.Closed then
                         local itemName = equippedItemData and equippedItemData.Display or "Unknown"
                         MagicEyeToggle:SetDesc(string.format("Used: %s | Lvl: 0 (Upgrade not started)", itemName))
@@ -2223,7 +2236,7 @@ if DemonArtModule then
     
     local DemonArtToggle = _chanceGroup:Toggle({
         Title = "Demon Art Upgrade",
-        Image = "rbxassetid://84366761557806", -- You might want to change this icon if there's a specific one for Demon Art
+        Image = "rbxassetid://84366761557806", 
         ImageSize = 24,
         Desc = "Loading...",
         Flag = "AutoUpgradeDemonArt_Cfg",
@@ -2258,10 +2271,8 @@ if DemonArtModule then
             local pData = getgenv().PlayerData
             local currentToken = pData.Materials.UpgradeDemonToken or 0;
             if pData and pData.Attributes and pData.GachaLevel and DemonArtModule and DemonArtModule.List then
-                -- Get Equipped Demon Art Index
                 local equippedArtIndex = pData.Attributes.DemonArt
                 
-                -- Get Upgrade Level
                 local currentLevel = pData.GachaLevel.DemonArt[tostring(equippedArtIndex)]
 				if currentLevel <= 0 then
 					currentLevel = 1					
@@ -2312,14 +2323,12 @@ if DemonArtModule then
                             DemonArtToggle:Set(false)
                         end
                     else
-                        -- Fallback if item data is missing
                         if not Window.Closed then
                             local cost = DemonArtModule.GetCost and DemonArtModule.GetCost(currentLevel) or "?"
                             DemonArtToggle:SetDesc(string.format("Lvl: %s | Cost: %s (Item Data Missing: Index %s)", tostring(currentLevel), FormatNumber(cost), tostring(equippedArtIndex)))
                         end
                     end
                 else
-                    -- Fallback if level is not found
                     if not Window.Closed then
                         local itemName = equippedItemData and equippedItemData.Display or "Unknown"
 						local cost = DemonArtModule.GetCost(currentLevel)
@@ -2653,12 +2662,10 @@ task.spawn(function()
 	local DefaultConfig = "ANConfig";
 	local CM = Window.ConfigManager;
     
-    -- Path manual diupdate ke FolderPath
 	if not isfolder((FolderPath .. "/config")) then
 		makefolder(FolderPath .. "/config");
 	end;
 	pcall(function()
-        -- Path manual diupdate ke FolderPath
 		if isfile(FolderPath .. "/config/" .. DefaultConfig .. ".json") then
 			local cfg = CM:GetConfig(DefaultConfig) or CM:CreateConfig(DefaultConfig);
 			cfg:Load();
