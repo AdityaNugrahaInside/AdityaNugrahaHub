@@ -103,6 +103,8 @@ local IsLoadingConfig = false;
 local IsTeleporting = false;
 local GlobalEnemyMap = {};
 local RollConfigs = {};
+local LastEnemyScanTime = 0;
+local LastEnemyChildCount = 0;
 local AllRollTypes = {
 	"Biju",
 	"Race",
@@ -167,20 +169,22 @@ local function ScanPlayerData()
 end;
 task.spawn(ScanPlayerData);
 local function InitAutoReconnectBypass()
-	local targetFound = false;
-	local function activateBypass(func, uiObject, numIndex)
-		task.spawn(function()
-			while true do
-				debug.setupvalue(func, numIndex, 0);
-				if uiObject then
-					uiObject.Visible = true;
-					uiObject.Text = "ANHub Bypass Reconnect V2";
-					uiObject.TextColor3 = Color3.fromRGB(0, 255, 100);
-				end;
-				task.wait(0.1);
-			end;
-		end);
-	end;
+    local targetFound = false;
+    local function activateBypass(func, uiObject, numIndex)
+        task.spawn(function()
+            local applied = false;
+            while true do
+                debug.setupvalue(func, numIndex, 0);
+                if uiObject and not applied then
+                    uiObject.Visible = true;
+                    uiObject.Text = "ANHub Bypass Reconnect V2";
+                    uiObject.TextColor3 = Color3.fromRGB(0, 255, 100);
+                    applied = true;
+                end;
+                task.wait(2);
+            end;
+        end);
+    end;
 	local function deepScan(func, path)
 		if not islclosure(func) then
 			return;
@@ -566,13 +570,19 @@ end
 
 -- [MODIFIKASI BARU: UPDATE RefreshEnemyData]
 local function RefreshEnemyData()
-	local uiList = {};
-	local seenForUI = {};
-	GlobalEnemyMap = {};
-	local EnemiesFolder = Workspace:FindFirstChild("Enemies");
-	if not EnemiesFolder then
-		return uiList;
-	end;
+    local uiList = {};
+    local seenForUI = {};
+    GlobalEnemyMap = {};
+    local EnemiesFolder = Workspace:FindFirstChild("Enemies");
+    if not EnemiesFolder then
+        return uiList;
+    end;
+    local childCount = #EnemiesFolder:GetChildren();
+    if tick() - LastEnemyScanTime < 1.5 and childCount == LastEnemyChildCount then
+        return CurrentZoneEnemiesCache;
+    end;
+    LastEnemyScanTime = tick();
+    LastEnemyChildCount = childCount;
 	for _, v in pairs(getgc(true)) do
 		if type(v) == "table" then
 			local config = rawget(v, "Config");
@@ -1014,19 +1024,23 @@ local function LogicGamemodes()
 				inLobbyZone = true;
 			end;
 		end;
-		local isFightingZone = string.find(currentMap, ":") and (string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense"));
-		if currentMap == "Raid" or currentMap == "Defense" then
-			isFightingZone = true 
-		end
+        local EnemiesFolder = Workspace:FindFirstChild("Enemies")
+        local hasEnemies = EnemiesFolder and #EnemiesFolder:GetChildren() > 0
+        local isFightingZone = string.find(currentMap, ":") and (string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense"));
+        if currentMap == "Raid" then
+            isFightingZone = true
+        elseif currentMap == "Defense" then
+            isFightingZone = hasEnemies
+        end
 		
-		if currentMap ~= "Unknown" then
-			if isFightingZone then
-				wasInGamemode = true;
+        if currentMap ~= "Unknown" then
+            if isFightingZone then
+                wasInGamemode = true;
 
-				if os.time() - refreshTimer > 5 then
-					RefreshEnemyData();
-					refreshTimer = os.time();
-				end;
+                if os.time() - refreshTimer > 10 then
+                    RefreshEnemyData();
+                    refreshTimer = os.time();
+                end;
 				if currentTargetObj then
 					if currentTargetObj.Alive == false or (not currentTargetObj.Data) then
 						currentTargetObj = nil;
@@ -1046,7 +1060,7 @@ local function LogicGamemodes()
 							if enemyObj.Alive == true and enemyObj.Data and enemyObj.Data.CFrame then
 								local dst = (myPos - enemyObj.Data.CFrame.Position).Magnitude;
 								local config = rawget(enemyObj, "Config")
-								local isBoss = config and config.Difficult == "Boss"
+								local isBoss = config and config.Difficult == "Emperor"
 
 								if isRaid and isBoss then
 									closest = enemyObj
@@ -1069,7 +1083,7 @@ local function LogicGamemodes()
 						currentTargetObj = closest;
 						if currentTargetObj.Data and currentTargetObj.Data.CFrame then
 							local config = rawget(currentTargetObj, "Config")
-							local isBoss = config and config.Difficult == "Boss"
+							local isBoss = config and config.Difficult == "Emperor"
 							local targetUid = currentTargetObj.Uid
 
 							if isRaid then
@@ -1216,43 +1230,47 @@ task.spawn(function()
 	end;
 end);
 task.spawn(function()
-	local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui");
-	while not Window.Destroyed do
-		local isRolling = false;
-		local rollList = {
-			"Biju",
-			"Race",
-			"Sayajin",
-			"Fruits",
-			"Haki",
-			"Breathing",
-			"MagicEyes",
+    local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui");
+    local prevRolling = false;
+    while not Window.Destroyed do
+        local isRolling = false;
+        local rollList = {
+            "Biju",
+            "Race",
+            "Sayajin",
+            "Fruits",
+            "Haki",
+            "Breathing",
+            "MagicEyes",
             "DemonArt",
-			"Organization",
-			"Titan"
-		};
-		for _, rType in pairs(rollList) do
-			if Config["AutoRoll" .. rType] then
-				isRolling = true;
-				break;
-			end;
-		end;
-		if isRolling then
-			local CrateUI = PlayerGui:FindFirstChild("Crate");
-			if CrateUI then
-				CrateUI.Parent = nil;
-			end;
-			local ScreenUI = PlayerGui:FindFirstChild("Screen");
-			if ScreenUI and (not ScreenUI.Enabled) then
-				ScreenUI.Enabled = true;
-			end;
-			local Topbar = PlayerGui:FindFirstChild("TopbarStandard");
-			if Topbar and (not Topbar.Enabled) then
-				Topbar.Enabled = true;
-			end;
-		end;
-		task.wait(0.5);
-	end;
+            "Organization",
+            "Titan"
+        };
+        for _, rType in pairs(rollList) do
+            if Config["AutoRoll" .. rType] then
+                isRolling = true;
+                break;
+            end;
+        end;
+        if isRolling ~= prevRolling then
+            prevRolling = isRolling;
+            if isRolling then
+                local CrateUI = PlayerGui:FindFirstChild("Crate");
+                if CrateUI then
+                    CrateUI.Parent = nil;
+                end;
+                local ScreenUI = PlayerGui:FindFirstChild("Screen");
+                if ScreenUI and (not ScreenUI.Enabled) then
+                    ScreenUI.Enabled = true;
+                end;
+                local Topbar = PlayerGui:FindFirstChild("TopbarStandard");
+                if Topbar and (not Topbar.Enabled) then
+                    Topbar.Enabled = true;
+                end;
+            end;
+        end;
+        task.wait(1);
+    end;
 end);
 local InfoTab = Window:Tab({
 	Title = "Info",
@@ -1930,15 +1948,15 @@ local function UpdatePreview(avatarName)
 				Cam.CFrame = CFrame.new(Head.CFrame.Position + Head.CFrame.LookVector * 4 + Vector3.new(0, 0.5, 0), Head.CFrame.Position);
 			end;
 			task.spawn(function()
-				while VP.Parent do
-					if Head then
-						Clone:PivotTo(Clone:GetPivot() * CFrame.Angles(0, math.rad(1), 0));
-					end;
-					task.wait(0.03);
-				end;
-			end);
-		end;
-	end;
+                while VP.Parent do
+                    if Head then
+                        Clone:PivotTo(Clone:GetPivot() * CFrame.Angles(0, math.rad(1), 0));
+                    end;
+                    task.wait(0.05);
+                end;
+            end);
+        end;
+    end;
 end;
 AvatarDropdown = GeneralManagerSection:Dropdown({
 	Title = "Select Avatar",
@@ -1976,16 +1994,53 @@ local InitialAvatarList = GetAvatarsWithStats();
 AvatarDropdown:Refresh(InitialAvatarList);
 local StartEquipped = (getgenv()).PlayerData.Attributes and (getgenv()).PlayerData.Attributes.Avatar;
 if StartEquipped then
-	for _, item in ipairs(InitialAvatarList) do
-		if item.Value == StartEquipped then
-			AvatarDropdown:Select(item.Title);
-			if not Window.Closed and StartEquipped ~= AlreadyUsedAvatar then
-				UpdatePreview(StartEquipped);
-				AlreadyUsedAvatar = StartEquipped;
-			end;
-			break;
-		end;
-	end;
+    for _, item in ipairs(InitialAvatarList) do
+        if item.Value == StartEquipped then
+            AvatarDropdown:Select(item.Title);
+            if not Window.Closed and StartEquipped ~= AlreadyUsedAvatar then
+                UpdatePreview(StartEquipped);
+                AlreadyUsedAvatar = StartEquipped;
+            end;
+            pcall(function()
+                Reliable:FireServer("Avatar Equip", {
+                    StartEquipped
+                });
+            end);
+            break;
+        end;
+    end;
+end;
+
+if not StartEquipped then
+    task.spawn(function()
+        local tries = 0;
+        while not Window.Destroyed and tries < 50 do
+            local Data = (getgenv()).PlayerData;
+            if Data and Data.Attributes and Data.Attributes.Avatar then
+                local eq = Data.Attributes.Avatar;
+                for _, item in ipairs(InitialAvatarList) do
+                    if item.Value == eq then
+                        pcall(function()
+                            AvatarDropdown:Select(item.Title);
+                        end);
+                        if not Window.Closed and eq ~= AlreadyUsedAvatar then
+                            UpdatePreview(eq);
+                            AlreadyUsedAvatar = eq;
+                        end;
+                        pcall(function()
+                            Reliable:FireServer("Avatar Equip", {
+                                eq
+                            });
+                        end);
+                        break;
+                    end;
+                end;
+                break;
+            end;
+            tries = tries + 1;
+            task.wait(0.1);
+        end;
+    end);
 end;
 
 local YenTab = MainSection:Tab({
@@ -2457,44 +2512,43 @@ task.spawn(function()
 	local refreshTick = 0;
 	while not Window.Destroyed do
 		task.wait(0.5);
-		if IsTeleporting then
-			continue;
-		end;
-		local detectedZone = GetCurrentMapStatus();
-		if detectedZone and detectedZone ~= "Unknown" and detectedZone ~= prevZone then
-			prevZone = detectedZone;
-			CurrentZoneName = detectedZone;
-			Config.SelectedEnemy = nil;
-			if EnemyDropdown and EnemyDropdown.Select then
+		if not IsTeleporting then
+			local detectedZone = GetCurrentMapStatus();
+			if detectedZone and detectedZone ~= "Unknown" and detectedZone ~= prevZone then
+				prevZone = detectedZone;
+				CurrentZoneName = detectedZone;
+				Config.SelectedEnemy = nil;
+				if EnemyDropdown and EnemyDropdown.Select then
+					pcall(function()
+						EnemyDropdown:Select(nil);
+					end);
+				end;
+				IsLoadingConfig = true;
+				local freshEnemies = RefreshEnemyData();
+				CurrentZoneEnemiesCache = freshEnemies;
 				pcall(function()
-					EnemyDropdown:Select(nil);
+					EnemyDropdown:Refresh(freshEnemies);
 				end);
-			end;
-			IsLoadingConfig = true;
-			local freshEnemies = RefreshEnemyData();
-			CurrentZoneEnemiesCache = freshEnemies;
-			pcall(function()
-				EnemyDropdown:Refresh(freshEnemies);
-			end);
-			task.wait(0.2);
-			local savedEntry = Config.ZoneConfigurations[detectedZone];
-			local objectToSelect = nil;
-			if savedEntry then
-				for _, currentMob in ipairs(freshEnemies) do
-					if currentMob.Value == savedEntry.Value then
-						objectToSelect = currentMob;
-						Config.SelectedEnemy = currentMob.Value;
-						break;
+				task.wait(0.2);
+				local savedEntry = Config.ZoneConfigurations[detectedZone];
+				local objectToSelect = nil;
+				if savedEntry then
+					for _, currentMob in ipairs(freshEnemies) do
+						if currentMob.Value == savedEntry.Value then
+							objectToSelect = currentMob;
+							Config.SelectedEnemy = currentMob.Value;
+							break;
+						end;
 					end;
 				end;
+				if objectToSelect then
+					pcall(function()
+						EnemyDropdown:Select(objectToSelect.Value);
+					end);
+				end;
+				task.wait(0.2);
+				IsLoadingConfig = false;
 			end;
-			if objectToSelect then
-				pcall(function()
-					EnemyDropdown:Select(objectToSelect.Value);
-				end);
-			end;
-			task.wait(0.2);
-			IsLoadingConfig = false;
 		end;
 	end;
 end);
@@ -2648,11 +2702,11 @@ task.spawn(function()
 					end;
 				end;
 			end;
-		elseif RankProgressUI then
-			RankProgressUI:SetDesc("Scanning Data...");
-		end;
-		task.wait(0.5);
-	end;
+        elseif RankProgressUI then
+            RankProgressUI:SetDesc("Scanning Data...");
+        end;
+        task.wait(1);
+    end;
 end);
 task.spawn(MaintainAutoStatus);
 task.spawn(function()
@@ -2697,8 +2751,6 @@ local AllSections = {
 	CommunitySection,
 	MainSection,
 	FarmingManagerSection,
-	RollSection,
-	AvatarSection,
 	YenMainSection,
 	ConfigSection,
 	SecuritySection
