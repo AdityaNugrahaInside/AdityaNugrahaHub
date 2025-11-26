@@ -6,8 +6,8 @@ until game:IsLoaded();
 loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/loading.lua"))()
 
 -- [MODIFIKASI 1: UPDATE FOLDER PATH]
-local FolderPath = "ANUI/AnimeWeapons"; 
-local ExpiryFile = FolderPath .. "/ANHub_Key_Timer.txt"; 
+local FolderPath = "ANUI/AnimeWeapons";
+local ExpiryFile = FolderPath .. "/ANHub_Key_Timer.txt";
 local ZoneDBFile = "Zone_Database.json";
 
 local function SecureWipe()
@@ -16,7 +16,7 @@ local function SecureWipe()
 	end;
 	local currentTime = os.time();
 	local isExpired = false;
-	
+
 	if isfile(ExpiryFile) then
 		local savedTime = tonumber(readfile(ExpiryFile)) or 0;
 		if currentTime > savedTime then
@@ -30,7 +30,7 @@ local function SecureWipe()
 		if isfile(ExpiryFile) then
 			delfile(ExpiryFile);
 		end;
-		
+
 		local PossiblePaths = {
 			"ANUI/AnimeWeapons",
 		};
@@ -93,7 +93,7 @@ local Config = {
 	ZoneConfigurations = {},
 	TargetDungeon = {},
 	TargetRaid = {},
-	TargetDefense = {} 
+	TargetDefense = {}
 };
 local hrp, humanoid;
 local LastZone = nil;
@@ -105,18 +105,36 @@ local GlobalEnemyMap = {};
 local RollConfigs = {};
 local LastEnemyScanTime = 0;
 local LastEnemyChildCount = 0;
-local AllRollTypes = {
-	"Biju",
-	"Race",
-	"Sayajin",
-	"Fruits",
-	"Haki",
-	"Breathing",
-	"Organization",
-	"Titan",
-    "MagicEyes",
-    "DemonArt"
-};
+local AllRollTypes = {};
+local function DiscoverRollTypes()
+    local set = {};
+    local cfgRoot = ReplicatedStorage:FindFirstChild("Scripts") and ReplicatedStorage.Scripts:FindFirstChild("Configs");
+    if not cfgRoot then
+        return;
+    end;
+    local rollsFolder = cfgRoot:FindFirstChild("RollGachas");
+    if rollsFolder then
+        for _, child in pairs(rollsFolder:GetChildren()) do
+            if child:IsA("ModuleScript") then
+                set[child.Name] = true;
+            end;
+        end;
+    end;
+    local upgradesFolder = cfgRoot:FindFirstChild("RollGachaUpgrades");
+    if upgradesFolder then
+        for _, child in pairs(upgradesFolder:GetChildren()) do
+            if child:IsA("ModuleScript") then
+                set[child.Name] = true;
+            end;
+        end;
+    end;
+    AllRollTypes = {};
+    for name, _ in pairs(set) do
+        table.insert(AllRollTypes, name);
+    end;
+    table.sort(AllRollTypes);
+end;
+DiscoverRollTypes();
 local ChanceUpgradeTypes = {
 	"Breath",
 	"Pirate",
@@ -267,14 +285,22 @@ if ChancePath then
 		end;
 	end;
 end;
-local MagicEyesModule = nil;
-pcall(function()
-    MagicEyesModule = require(ReplicatedStorage.Scripts.Configs.RollGachaUpgrades.MagicEyes);
-end);
-local DemonArtModule = nil;
-pcall(function()
-    DemonArtModule = require(ReplicatedStorage.Scripts.Configs.RollGachaUpgrades.DemonArt);
-end);
+local UpgradesModules = {};
+do
+    local upgradesFolder = ReplicatedStorage.Scripts.Configs:FindFirstChild("RollGachaUpgrades");
+    if upgradesFolder then
+        for _, m in pairs(upgradesFolder:GetChildren()) do
+            if m:IsA("ModuleScript") then
+                local s, d = pcall(require, m);
+                if s and type(d) == "table" then
+                    UpgradesModules[m.Name] = d;
+                end;
+            end;
+        end;
+    end;
+end
+local MagicEyesModule = UpgradesModules["MagicEyes"];
+local DemonArtModule = UpgradesModules["DemonArt"];
 local YenUpgradeConfig = YenModule.Config;
 local TokenUpgradeConfig = TokenModule.Config;
 local MaxRankCap = RankModule.MAX or 33;
@@ -378,7 +404,7 @@ local function SaveZoneConfig(zone, selectedItem)
 	end;
 	Config.SelectedEnemy = val;
 	Config.ZoneConfigurations[zone] = savedEntry;
-	
+
 	if not isfolder(FolderPath) then
 		makefolder(FolderPath);
 	end;
@@ -445,7 +471,7 @@ local function GetRollIconAsset(rollType)
 	return fallback;
 end;
 local dungeonList, dungeonDB, raidList, raidDB = {}, {}, {}, {};
-local defenseList, defenseDB = {}, {}; 
+local defenseList, defenseDB = {}, {};
 local function LoadDungeonData()
 	local success, module = pcall(function()
 		return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Dungeon);
@@ -510,34 +536,43 @@ local function LoadDefenseData()
 			defenseDB[rName] = {
 				ID = id,
 				Times = phase.START_TIMES,
-				BaseDesc = desc 
+				BaseDesc = desc
 			};
 		end;
 	end;
 end;
 local function LoadRollData(rollType)
-	local success, module = pcall(function()
-		return require(ReplicatedStorage.Scripts.Configs.RollGachas[rollType]);
-	end);
-	if success and module then
-		RollConfigs[rollType] = {
-			Cost = module.Cost or 1,
-			MaterialKey = module.Material or rollType .. "Token",
-			ImageId = module.ImageId
-		};
-	else
-		RollConfigs[rollType] = {
-			Cost = 1,
-			MaterialKey = rollType .. "Token",
-			ImageId = "84366761557806"
-		};
-	end;
+    local success, module = pcall(function()
+        return require(ReplicatedStorage.Scripts.Configs.RollGachas[rollType]);
+    end);
+    if success and module then
+        RollConfigs[rollType] = {
+            Cost = module.Cost or 1,
+            MaterialKey = module.Material or rollType .. "Token",
+            ImageId = module.ImageId
+        };
+    else
+        local up = UpgradesModules and UpgradesModules[rollType];
+        if up then
+            RollConfigs[rollType] = {
+                Cost = up.Cost or 1,
+                MaterialKey = up.Material or rollType .. "Token",
+                ImageId = up.ImageId
+            };
+        else
+            RollConfigs[rollType] = {
+                Cost = 1,
+                MaterialKey = rollType .. "Token",
+                ImageId = "84366761557806"
+            };
+        end;
+    end;
 end;
 LoadDungeonData();
 LoadRaidData();
-LoadDefenseData(); 
+LoadDefenseData();
 for _, rollType in ipairs(AllRollTypes) do
-	LoadRollData(rollType);
+    LoadRollData(rollType);
 end;
 
 -- [MODIFIKASI BARU: Helper Function untuk Mendapatkan Icon dari ChanceReward]
@@ -547,15 +582,15 @@ local function GetRewardAssetId(rewardKey)
     local parts = string.split(rewardKey, ".")
     local typeCategory = parts[1] -- "Weapons" atau "Materials"
     local itemName = parts[2] -- "WildKatana" atau "BreathingToken"
-    
+
     local templateId = nil
-    
+
     if typeCategory == "Materials" and MaterialsModule[itemName] then
         templateId = MaterialsModule[itemName].Template
     elseif typeCategory == "Weapons" and WeaponsModule[itemName] then
         templateId = WeaponsModule[itemName].Template
     end
-    
+
     if templateId then
         -- Format Asset ID
         local idStr = tostring(templateId)
@@ -598,7 +633,7 @@ local function RefreshEnemyData()
 				table.insert(GlobalEnemyMap[realName], v);
 				if not seenForUI[realName] then
 					seenForUI[realName] = true;
-                    
+
                     -- [BARU: Ambil Gambar dari ChanceReward]
                     local rewardImages = {}
                     if config.ChanceReward then
@@ -650,7 +685,7 @@ local function GetAvatarsWithStats()
 			machineStats = r;
 		end;
 	end;
-	
+
 	local ConfigsFolder = ReplicatedStorage.Scripts.Configs
 	local MZFolder = ConfigsFolder:FindFirstChild("Multiple Zones") or ConfigsFolder:FindFirstChild("MultipleZones")
 	local zonesPath = MZFolder and MZFolder:FindFirstChild("Enemies")
@@ -782,12 +817,12 @@ local function CreateTabButtons(section, tabNames)
     ButtonContainer.Name = "TabButtonsContainer"
     ButtonContainer.Size = UDim2.new(1, 0, 0, 35)
     ButtonContainer.BackgroundTransparency = 1
-    
+
     local ContainerPadding = Instance.new("UIPadding")
     ContainerPadding.Parent = ButtonContainer
     ContainerPadding.PaddingLeft = UDim.new(0, 5)
     ContainerPadding.PaddingRight = UDim.new(0, 5)
-    
+
     local Dummy = section:Paragraph({Title="Temp", Desc=""})
     local ContentParent = Dummy.ParagraphFrame.UIElements.Main.Parent.Parent.Content
     ButtonContainer.Parent = ContentParent
@@ -800,14 +835,14 @@ local function CreateTabButtons(section, tabNames)
     UIList.FillDirection = Enum.FillDirection.Horizontal
     UIList.SortOrder = Enum.SortOrder.LayoutOrder
     UIList.Padding = UDim.new(0, 5)
-    
+
     local function UpdateVisibility(selectedTab)
         TabSystem.CurrentTab = selectedTab
         for name, objects in pairs(TabSystem.Elements) do
             local isVisible = (name == selectedTab)
             for _, obj in ipairs(objects) do
-                if obj.ElementFrame then 
-                    obj.ElementFrame.Visible = isVisible 
+                if obj.ElementFrame then
+                    obj.ElementFrame.Visible = isVisible
                 elseif obj.UIElements and obj.UIElements.Main then
                     obj.UIElements.Main.Visible = isVisible
                 elseif obj.GroupFrame then
@@ -830,7 +865,7 @@ local function CreateTabButtons(section, tabNames)
         end)
     end
 
-    local btnWidth = 1 / #tabNames 
+    local btnWidth = 1 / #tabNames
 
     for i, name in ipairs(tabNames) do
         local btn = Instance.new("TextButton")
@@ -840,7 +875,7 @@ local function CreateTabButtons(section, tabNames)
         btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
         btn.AutoButtonColor = true
         btn.Text = ""
-        
+
         local corner = Instance.new("UICorner")
         corner.CornerRadius = UDim.new(0, 6)
         corner.Parent = btn
@@ -862,8 +897,8 @@ local function CreateTabButtons(section, tabNames)
         if not TabSystem.Elements[tabName] then return end
         table.insert(TabSystem.Elements[tabName], elementObject)
         if tabName ~= TabSystem.CurrentTab then
-            if elementObject.ElementFrame then 
-                elementObject.ElementFrame.Visible = false 
+            if elementObject.ElementFrame then
+                elementObject.ElementFrame.Visible = false
             elseif elementObject.UIElements and elementObject.UIElements.Main then
                 elementObject.UIElements.Main.Visible = false
             elseif elementObject.GroupFrame then
@@ -989,20 +1024,20 @@ task.spawn(function()
         local Debounce = false
         local function TriggerRefresh()
             if Debounce then return end
-            
+
             local currentMap = GetCurrentMapStatus()
             local isGamemode = string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense")
-            
+
             if not isGamemode then
                 return
             end
 
             Debounce = true
-            task.wait(1.5) 
+            task.wait(1.5)
             RefreshEnemyData()
             Debounce = false
         end
-        
+
         EnemiesFolder.ChildAdded:Connect(TriggerRefresh)
         EnemiesFolder.ChildRemoved:Connect(TriggerRefresh)
     end
@@ -1032,7 +1067,7 @@ local function LogicGamemodes()
         elseif currentMap == "Defense" then
             isFightingZone = hasEnemies
         end
-		
+
         if currentMap ~= "Unknown" then
             if isFightingZone then
                 wasInGamemode = true;
@@ -1093,7 +1128,7 @@ local function LogicGamemodes()
 								end
 							else
 								hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
-								lastTeleportedUid = targetUid 
+								lastTeleportedUid = targetUid
 							end
 						end;
 					end;
@@ -1196,57 +1231,33 @@ local function LogicGamemodes()
 	end;
 end;
 task.spawn(function()
-	while not Window.Destroyed do
-		local anyRollActive = false;
-		local rollList = {
-			"Biju",
-			"Race",
-			"Sayajin",
-			"Fruits",
-			"Haki",
-			"Breathing",
-			"MagicEyes",
-            "DemonArt",
-			"Organization",
-			"Titan"
-		};
-		for _, rollType in ipairs(rollList) do
-			if Config["AutoRoll" .. rollType] then
-				anyRollActive = true;
-				if Reliable then
-					pcall(function()
-						Reliable:FireServer("Crate Roll Start", {
-							rollType,
-							false
-						});
-					end);
-				end;
-				task.wait(1.5);
-			end;
-		end;
-		if not anyRollActive then
-			task.wait(1);
-		end;
-	end;
+    while not Window.Destroyed do
+        local anyRollActive = false;
+        for _, rollType in ipairs(AllRollTypes) do
+            if Config["AutoRoll" .. rollType] then
+                anyRollActive = true;
+                if Reliable then
+                    pcall(function()
+                        Reliable:FireServer("Crate Roll Start", {
+                            rollType,
+                            false
+                        });
+                    end);
+                end;
+                task.wait(1.5);
+            end;
+        end;
+        if not anyRollActive then
+            task.wait(1);
+        end;
+    end;
 end);
 task.spawn(function()
     local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui");
     local prevRolling = false;
     while not Window.Destroyed do
         local isRolling = false;
-        local rollList = {
-            "Biju",
-            "Race",
-            "Sayajin",
-            "Fruits",
-            "Haki",
-            "Breathing",
-            "MagicEyes",
-            "DemonArt",
-            "Organization",
-            "Titan"
-        };
-        for _, rType in pairs(rollList) do
+        for _, rType in ipairs(AllRollTypes) do
             if Config["AutoRoll" .. rType] then
                 isRolling = true;
                 break;
@@ -1435,7 +1446,7 @@ task.spawn(function()
 		local t = os.date("*t");
 		local currentTotalSeconds = t.min * 60 + t.sec;
 		local newList = {};
-		
+
 		for _, item in ipairs(dungeonList) do
 			local dName = item.Value;
 			local data = dungeonDB[dName];
@@ -1449,7 +1460,7 @@ task.spawn(function()
 				local m = math.floor(diff / 60);
 				local s = diff % 60;
 				local timeStr = string.format("%02d:%02d", m, s);
-				
+
 				table.insert(newList, {
 					Title = item.Title,
 					Value = item.Value,
@@ -1459,7 +1470,7 @@ task.spawn(function()
 				table.insert(newList, item);
 			end;
 		end;
-		
+
 		if DgnDrop and DgnDrop.Refresh then
 			pcall(function()
 				DgnDrop:Refresh(newList);
@@ -1470,7 +1481,8 @@ task.spawn(function()
 end);
 local RaidDrop = FarmingManagerSection:Dropdown({
 	Title = "Select Raid",
-	Multi = true,AllowNone = true,
+	Multi = true,
+	AllowNone = true,
 	Flag = "RaidDiff_Cfg",
 	Values = raidList,
 	Callback = function(val)
@@ -1502,13 +1514,13 @@ task.spawn(function()
 	local function GetNextTimeDiff(times, currentMin, currentSec)
 		if not times or #times == 0 then return 0 end
 		table.sort(times)
-		
+
 		for _, t in ipairs(times) do
 			if t > currentMin then
 				return (t - currentMin) * 60 - currentSec
 			end
 		end
-		
+
 		local firstTime = times[1]
 		return (60 - currentMin + firstTime) * 60 - currentSec
 	end
@@ -1517,19 +1529,19 @@ task.spawn(function()
 		local t = os.date("*t")
 		local currentMin = t.min
 		local currentSec = t.sec
-		
+
 		local newRaidList = {}
 		for _, item in ipairs(raidList) do
 			local rName = item.Value
 			local data = raidDB[rName]
 			if data and data.Times then
 				local diff = GetNextTimeDiff(data.Times, currentMin, currentSec)
-				if diff < 0 then diff = 0 end 
-				
+				if diff < 0 then diff = 0 end
+
 				local m = math.floor(diff / 60)
 				local s = diff % 60
 				local timeStr = string.format("%02d:%02d", m, s)
-				
+
 				table.insert(newRaidList, {
 					Title = item.Title,
 					Value = item.Value,
@@ -1539,11 +1551,11 @@ task.spawn(function()
 				table.insert(newRaidList, item)
 			end
 		end
-		
+
 		if RaidDrop and RaidDrop.Refresh then
 			pcall(function() RaidDrop:Refresh(newRaidList) end)
 		end
-		
+
 		local newDefenseList = {}
 		for _, item in ipairs(defenseList) do
 			local dName = item.Value
@@ -1551,11 +1563,11 @@ task.spawn(function()
 			if data and data.Times then
 				local diff = GetNextTimeDiff(data.Times, currentMin, currentSec)
 				if diff < 0 then diff = 0 end
-				
+
 				local m = math.floor(diff / 60)
 				local s = diff % 60
 				local timeStr = string.format("%02d:%02d", m, s)
-				
+
 				table.insert(newDefenseList, {
 					Title = item.Title,
 					Value = item.Value,
@@ -1565,11 +1577,11 @@ task.spawn(function()
 				table.insert(newDefenseList, item)
 			end
 		end
-		
+
 		if DefenseDrop and DefenseDrop.Refresh then
 			pcall(function() DefenseDrop:Refresh(newDefenseList) end)
 		end
-		
+
 		task.wait(1)
 	end
 end)
@@ -1617,7 +1629,7 @@ local SelectedExToken = nil
 local SelectedExIcon = nil
 local PrevMaterialsDigest = nil
 local ExchangeAmount = 1
-local ExchangeIsBuying = false 
+local ExchangeIsBuying = false
 
 local function GetIcon(id)
     return "rbxassetid://"..tostring(id)
@@ -1710,11 +1722,11 @@ local ExchangeButton = GeneralManagerSection:Button({
     Title = "Exchange",
     Icon = "check",
     Callback = function()
-        if not SelectedExToken then 
+        if not SelectedExToken then
             l:Notify({Title="Error", Content="Select a token first!", Icon="alert-triangle"})
-            return 
+            return
         end
-        
+
         local args = {
             "Convert Tokens",
             {
@@ -1723,7 +1735,7 @@ local ExchangeButton = GeneralManagerSection:Button({
                 ExchangePercent
             }
         }
-        
+
         if Reliable then
             pcall(function()
                 Reliable:FireServer(unpack(args))
@@ -1742,13 +1754,13 @@ task.spawn(function()
             MatPreview:Refresh(BuildExchangeValues())
             PrevMaterialsDigest = digest
         end
-        
+
         local tradeCount = (pData and pData.Materials and pData.Materials["TradeToken"]) or 0
         local matCount = (SelectedExToken and pData and pData.Materials and pData.Materials[SelectedExToken]) or 0
-        
+
         local inputAmount = 0
         local outputAmount = 0
-        
+
         if ExchangeIsBuying then
             inputAmount = math.floor(tradeCount * ExchangePercent)
             outputAmount = inputAmount
@@ -1763,14 +1775,14 @@ task.spawn(function()
             if info and info.Template then
                 MatPreview:SetTitle(info.Display)
                 MatPreview:SetIcon(SelectedExIcon or GetIcon(info.Template), 30)
-                
+
                 if ExchangeIsBuying then
                      MatPreview:SetDesc(string.format("Current: %s | +%s", FormatNumber(matCount), FormatNumber(outputAmount)))
                 else
                      MatPreview:SetDesc(string.format("Current: %s | -%s", FormatNumber(matCount), FormatNumber(inputAmount)))
                 end
             end
-            
+
             if ExchangeIsBuying then
                 TradePreview:SetDesc(string.format("Current: %s | -%s", FormatNumber(tradeCount), FormatNumber(inputAmount)))
             else
@@ -1786,59 +1798,17 @@ task.spawn(function()
     end
 end)
 
-local rollToggleData = {
-	{
-		"Biju",
-		"AutoRollBiju"
-	},
-	{
-		"Race",
-		"AutoRollRace"
-	},
-	{
-		"Sayajin",
-		"AutoRollSayajin"
-	},
-	{
-		"Fruits",
-		"AutoRollFruits"
-	},
-	{
-		"Haki",
-		"AutoRollHaki"
-	},
-	{
-		"Breathing",
-		"AutoRollBreathing"
-	},
-	{
-		"Organization",
-		"AutoRollOrganization"
-	},
-    {
-        "Titan",
-        "AutoRollTitan"
-    },
-    {
-        "MagicEyes",
-        "AutoRollMagicEyes"
-    },
-    {
-        "DemonArt",
-        "AutoRollDemonArt"
-    }
-};
 local _rollGroup;
 local _rollCount = 0;
-for i, rollData in ipairs(rollToggleData) do
-    local rollType, configFlag = rollData[1], rollData[2];
+for _, rollType in ipairs(AllRollTypes) do
     if _rollCount % 2 == 0 then
         _rollGroup = GeneralManagerSection:Group({});
         GeneralTabs:Add("Crate Roll", _rollGroup)
     end;
-    local tokenKey = RollMaterialMap[rollType];
-    local displayName = (MaterialsModule[tokenKey] and MaterialsModule[tokenKey].Display) or (RollDisplayNames[rollType] or tokenKey);
+    local tokenKey = (RollConfigs[rollType] and RollConfigs[rollType].MaterialKey) or (rollType .. "Token");
+    local displayName = (MaterialsModule[tokenKey] and MaterialsModule[tokenKey].Display) or rollType;
     local currentCount = (((getgenv()).PlayerData and (getgenv()).PlayerData.Materials) and (getgenv()).PlayerData.Materials[tokenKey]) or 0;
+    local configFlag = "AutoRoll" .. rollType;
     local myToggle = _rollGroup:Toggle({
         Title = rollType,
         Flag = configFlag .. "_Cfg",
@@ -1859,8 +1829,8 @@ task.spawn(function()
 		if pData then
             if pData.Materials then
                 for rollType, toggle in pairs(RollToggleUI) do
-                    local tokenKey = RollMaterialMap[rollType];
-                    local displayName = (MaterialsModule[tokenKey] and MaterialsModule[tokenKey].Display) or (RollDisplayNames[rollType] or tokenKey);
+                    local tokenKey = (RollConfigs[rollType] and RollConfigs[rollType].MaterialKey) or (rollType .. "Token");
+                    local displayName = (MaterialsModule[tokenKey] and MaterialsModule[tokenKey].Display) or rollType;
                     local currentCount = pData.Materials[tokenKey] or 0;
                     pcall(function()
                         if not Window.Closed then
@@ -1878,7 +1848,7 @@ task.spawn(function()
 					elseif pData.Vault[rollType] and pData.Vault[rollType]["7"] == true then
 						isMaxed = true;
 					end;
-					
+
 					if isMaxed then
 						pcall(function()
 							toggle:Lock();
@@ -1966,18 +1936,18 @@ AvatarDropdown = GeneralManagerSection:Dropdown({
 	Flag = "Avatar_Select_Cfg",
 	Callback = function(selectedItem)
 		local avatarKey = type(selectedItem) == "table" and selectedItem.Value or selectedItem;
-		
+
 		-- Guard: Prevent None/nil/empty string
 		if not avatarKey or avatarKey == "" or avatarKey == "None" then
 			return;
 		end;
-		
+
 		-- Update preview only if different and window open
 		if not Window.Closed and avatarKey ~= AlreadyUsedAvatar then
 			UpdatePreview(avatarKey);
 			AlreadyUsedAvatar = avatarKey;
 		end;
-		
+
 		-- Send to server
 		pcall(function()
 			Reliable:FireServer("Avatar Equip", {
@@ -2073,12 +2043,12 @@ local function GetTrainerIcon()
 	end);
 	return icon;
 end;
-local YenTabs = CreateTabButtons(YenMainSection, {"Yen", "Token", "Rank", "Trainer"}) 
+local YenTabs = CreateTabButtons(YenMainSection, {"Yen", "Token", "Rank", "Trainer"})
 local upgradeOrder = {"Luck", "Damage", "Yen", "Mastery", "Critical"}
 
 task.spawn(function()
     task.wait(0.1)
-    
+
     local function SetupButton(btnName, iconId)
         local btn = YenTabs.ButtonObjects[btnName]
         if btn then
@@ -2118,7 +2088,7 @@ for _, name in ipairs(upgradeOrder) do
         local myToggle = _yenGroup:Toggle({
             Title = name, Flag = "AutoYen_" .. name, Callback = function(val) Config["AutoYen_" .. name] = val end
         })
-        YenUpgradeToggleUI[name] = myToggle 
+        YenUpgradeToggleUI[name] = myToggle
         _yenCount = _yenCount + 1
     end
 end
@@ -2159,10 +2129,10 @@ for _, name in ipairs(ChanceUpgradeTypes) do
         YenTabs:Add("Trainer", _chanceGroup)
     end
     local myToggle = _chanceGroup:Toggle({
-        Title = "Loading...", 
-        Flag = "AutoChance_" .. name, 
-        Callback = function(val) 
-            Config["AutoChance_" .. name] = val 
+        Title = "Loading...",
+        Flag = "AutoChance_" .. name,
+        Callback = function(val)
+            Config["AutoChance_" .. name] = val
         end
     })
     ChanceUpgradeToggleUI[name] = myToggle
@@ -2174,7 +2144,7 @@ if MagicEyesModule then
         _chanceGroup = YenMainSection:Group({})
         YenTabs:Add("Trainer", _chanceGroup)
     end
-    
+
     local MagicEyeToggle = _chanceGroup:Toggle({
         Title = "Magic Eye Upgrade",
         Image = "rbxassetid://84366761557806",
@@ -2197,7 +2167,7 @@ if MagicEyesModule then
             end
         end
     })
-    
+
     task.spawn(function()
         local function FormatBonus(bonuses)
             local str = ""
@@ -2210,24 +2180,27 @@ if MagicEyesModule then
 
         while not Window.Destroyed do
             local pData = getgenv().PlayerData
-			local currentToken = pData.Materials.UpgradeEyeToken or 0;
+            local currentToken = 0
+            if pData and pData.Materials and MagicEyesModule and MagicEyesModule.UpgradeMaterial then
+                currentToken = pData.Materials[MagicEyesModule.UpgradeMaterial] or 0
+            end;
             if pData and pData.Attributes and pData.GachaLevel and MagicEyesModule and MagicEyesModule.List then
                 local equippedEyeIndex = pData.Attributes.MagicEyes
                 local currentLevel = pData.GachaLevel.MagicEyes[tostring(equippedEyeIndex)]
-				if currentLevel <= 0 then
-					currentLevel = 1					
-				end
+                if currentLevel <= 0 then
+                    currentLevel = 1                    
+                end
                 local equippedItemData = MagicEyesModule.List[equippedEyeIndex]
 				if not Window.Closed then
 					if equippedItemData and equippedItemData.Template then
 						MagicEyeToggle:SetImage(GetIcon(equippedItemData.Template))
 					end
 				end
-                
+
                 if currentLevel then
 
                     local maxLevel = MagicEyesModule.MaxLevel or 50
-                    
+
                     if currentLevel >= maxLevel then
                         if not Window.Closed then
                             MagicEyeToggle:SetDesc(string.format("Lvl: %s [MAX]", tostring(currentLevel)))
@@ -2242,21 +2215,21 @@ if MagicEyesModule then
                             local cost = MagicEyesModule.GetCost(currentLevel)
                             local currentBonuses = MagicEyesModule.GetBonuses(currentLevel, equippedItemData.Bonus)
                             local nextBonuses = MagicEyesModule.GetBonuses(currentLevel + 1, equippedItemData.Bonus)
-                            
+
                             local bonusStr = FormatBonus(currentBonuses)
                             local nextBonusStr = FormatBonus(nextBonuses)
-                            
+
                             MagicEyeToggle:SetDesc(string.format(
-                                "Used: %s(%s)\nLvl: %s/%s\nCost: %s	\nUpgrade Eyes Shard: %s", 
-                                equippedItemData.Display, 
-                                equippedItemData.Rarity, 
-                                tostring(currentLevel), 
+                                "Used: %s(%s)\nLvl: %s/%s\nCost: %s	\nUpgrade Eyes Shard: %s",
+                                equippedItemData.Display,
+                                equippedItemData.Rarity,
+                                tostring(currentLevel),
                                 tostring(maxLevel),
                                 FormatNumber(cost),
                                 FormatNumber(currentToken)
                             ))
                         end
-                        
+
                         local cost = MagicEyesModule.GetCost(currentLevel)
                         if currentToken < cost and Config.AutoUpgradeMagicEyes then
                             Config.AutoUpgradeMagicEyes = false
@@ -2286,10 +2259,10 @@ if DemonArtModule then
         _chanceGroup = YenMainSection:Group({})
         YenTabs:Add("Trainer", _chanceGroup)
     end
-    
+
     local DemonArtToggle = _chanceGroup:Toggle({
         Title = "Demon Art Upgrade",
-        Image = "rbxassetid://84366761557806", 
+        Image = "rbxassetid://84366761557806",
         ImageSize = 24,
         Desc = "Loading...",
         Flag = "AutoUpgradeDemonArt_Cfg",
@@ -2309,7 +2282,7 @@ if DemonArtModule then
             end
         end
     })
-    
+
     task.spawn(function()
         local function FormatBonus(bonuses)
             local str = ""
@@ -2322,25 +2295,28 @@ if DemonArtModule then
 
         while not Window.Destroyed do
             local pData = getgenv().PlayerData
-            local currentToken = pData.Materials.UpgradeDemonToken or 0;
+            local currentToken = 0
+            if pData and pData.Materials and DemonArtModule and DemonArtModule.UpgradeMaterial then
+                currentToken = pData.Materials[DemonArtModule.UpgradeMaterial] or 0
+            end;
             if pData and pData.Attributes and pData.GachaLevel and DemonArtModule and DemonArtModule.List then
                 local equippedArtIndex = pData.Attributes.DemonArt
                 
                 local currentLevel = pData.GachaLevel.DemonArt[tostring(equippedArtIndex)]
-				if currentLevel <= 0 then
-					currentLevel = 1					
-				end
+                if currentLevel <= 0 then
+                    currentLevel = 1                    
+                end
                 local equippedItemData = DemonArtModule.List[equippedArtIndex]
 				if not Window.Closed then
 					if equippedItemData and equippedItemData.Template then
 						DemonArtToggle:SetImage(GetIcon(equippedItemData.Template))
 					end
 				end
-                
+
                 if currentLevel then
 
                     local maxLevel = DemonArtModule.MaxLevel or 50
-                    
+
                     if currentLevel >= maxLevel then
                         if not Window.Closed then
                             DemonArtToggle:SetDesc(string.format("Lvl: %s [MAX]", tostring(currentLevel)))
@@ -2355,21 +2331,21 @@ if DemonArtModule then
                             local cost = DemonArtModule.GetCost(currentLevel)
                             local currentBonuses = DemonArtModule.GetBonuses(currentLevel, equippedItemData.Bonus)
                             local nextBonuses = DemonArtModule.GetBonuses(currentLevel + 1, equippedItemData.Bonus)
-                            
+
                             local bonusStr = FormatBonus(currentBonuses)
                             local nextBonusStr = FormatBonus(nextBonuses)
-                            
+
                             DemonArtToggle:SetDesc(string.format(
-                                "Used: %s(%s)\nLvl: %s/%s\nCost: %s	\nUpgrade Demon Art Shard: %s", 
-                                equippedItemData.Display, 
-                                equippedItemData.Rarity, 
-                                tostring(currentLevel), 
+                                "Used: %s(%s)\nLvl: %s/%s\nCost: %s	\nUpgrade Demon Art Shard: %s",
+                                equippedItemData.Display,
+                                equippedItemData.Rarity,
+                                tostring(currentLevel),
                                 tostring(maxLevel),
                                 FormatNumber(cost),
                                 FormatNumber(currentToken)
                             ))
                         end
-                        
+
                         local cost = DemonArtModule.GetCost(currentLevel)
                         if currentToken < cost and Config.AutoUpgradeDemonArt then
                             Config.AutoUpgradeDemonArt = false
@@ -2683,24 +2659,26 @@ task.spawn(function()
 				end;
 			end;
 			if Data.Materials then
-				for rollType, toggleObj in pairs(RollToggleUI) do
-					local configKey = RollTypeToConfig[rollType];
-					if Config[configKey] then
-						local count = Data.Materials[RollMaterialMap[rollType]] or 0;
-						if count < 10 then
-							Config[configKey] = false;
-							if toggleObj.Set then
-								toggleObj:Set(false);
-							end;
-							l:Notify({
-								Title = "Crate Roll Stopped",
-								Content = "Insufficient " .. (RollDisplayNames[rollType] or rollType),
-								Icon = "alert-triangle",
-								Duration = 5
-							});
-						end;
-					end;
-				end;
+                for rollType, toggleObj in pairs(RollToggleUI) do
+                    local configKey = "AutoRoll" .. rollType;
+                    if Config[configKey] then
+                        local tokenKey = (RollConfigs[rollType] and RollConfigs[rollType].MaterialKey) or (rollType .. "Token");
+                        local count = Data.Materials[tokenKey] or 0;
+                        if count < 10 then
+                            Config[configKey] = false;
+                            if toggleObj.Set then
+                                toggleObj:Set(false);
+                            end;
+                            local displayName = (MaterialsModule[tokenKey] and MaterialsModule[tokenKey].Display) or rollType;
+                            l:Notify({
+                                Title = "Crate Roll Stopped",
+                                Content = "Insufficient " .. displayName,
+                                Icon = "alert-triangle",
+                                Duration = 5
+                            });
+                        end;
+                    end;
+                end;
 			end;
         elseif RankProgressUI then
             RankProgressUI:SetDesc("Scanning Data...");
@@ -2713,7 +2691,7 @@ task.spawn(function()
 	task.wait(1.5);
 	local DefaultConfig = "ANConfig";
 	local CM = Window.ConfigManager;
-    
+
 	if not isfolder((FolderPath .. "/config")) then
 		makefolder(FolderPath .. "/config");
 	end;
