@@ -1593,31 +1593,71 @@ local ModeToggle = FarmingManagerSection:Toggle({
 FarmTabs:Add("Gamemodes", ModeToggle);
 
 -- [ACCESSORIES UI]
-local AccInMode = FarmingManagerSection:Dropdown({
+local function UpdateAccDropdown(dropdown, val, defaultTitle)
+    local selectedId = type(val) == "table" and val.Value or val
+    if selectedId then
+        local info = AccessoriesConfig[selectedId]
+        if info then
+            dropdown:SetTitle(info.Display)
+            local icon = "rbxassetid://84366761557806"
+            if info.Template then
+                icon = "rbxassetid://" .. tostring(info.Template)
+            end
+            dropdown:SetIcon(icon, 30)
+            dropdown:SetDesc(info.Rarity or "Accessory")
+        else
+            dropdown:SetTitle(selectedId)
+            dropdown:SetIcon("rbxassetid://84366761557806", 30)
+            dropdown:SetDesc("Unknown")
+        end
+    else
+        dropdown:SetTitle(defaultTitle or "Select Gear")
+        dropdown:SetDesc("None Selected")
+        dropdown:SetIcon("rbxassetid://84366761557806", 20)
+    end
+end
+
+local AccInMode
+AccInMode = FarmingManagerSection:Dropdown({
     Title = "Select Battle Gear",
+    Desc = "None Selected",
     Multi = false,
     Values = GetOwnedAccessories(),
-    ImageSize = UDim2.fromOffset(20, 20),
-    ImagePadding = 6,
+    Image = "rbxassetid://84366761557806",
+    ImageSize = 20,
     Flag = "AccInMode_Cfg",
     Callback = function(val)
-        Config.AccessoryInMode = type(val) == "table" and val.Value or val
+        local v = type(val) == "table" and val.Value or val
+        Config.AccessoryInMode = v
+        UpdateAccDropdown(AccInMode, v, "Select Battle Gear")
     end
 })
 FarmTabs:Add("Accessories", AccInMode)
 
-local AccOutMode = FarmingManagerSection:Dropdown({
+if Config.AccessoryInMode then
+    UpdateAccDropdown(AccInMode, Config.AccessoryInMode, "Select Battle Gear")
+end
+
+local AccOutMode
+AccOutMode = FarmingManagerSection:Dropdown({
     Title = "Select Lobby Gear",
+    Desc = "None Selected",
     Multi = false,
     Values = GetOwnedAccessories(),
-    ImageSize = UDim2.fromOffset(20, 20),
-    ImagePadding = 6,
+    Image = "rbxassetid://84366761557806",
+    ImageSize = 20,
     Flag = "AccOutMode_Cfg",
     Callback = function(val)
-        Config.AccessoryOutMode = type(val) == "table" and val.Value or val
+        local v = type(val) == "table" and val.Value or val
+        Config.AccessoryOutMode = v
+        UpdateAccDropdown(AccOutMode, v, "Select Lobby Gear")
     end
 })
 FarmTabs:Add("Accessories", AccOutMode)
+
+if Config.AccessoryOutMode then
+    UpdateAccDropdown(AccOutMode, Config.AccessoryOutMode, "Select Lobby Gear")
+end
 
 local RefreshAccBtn = FarmingManagerSection:Button({
     Title = "Refresh Accessories",
@@ -1626,6 +1666,9 @@ local RefreshAccBtn = FarmingManagerSection:Button({
         local list = GetOwnedAccessories()
         AccInMode:Refresh(list)
         AccOutMode:Refresh(list)
+        
+        if Config.AccessoryInMode then UpdateAccDropdown(AccInMode, Config.AccessoryInMode, "Select Battle Gear") end
+        if Config.AccessoryOutMode then UpdateAccDropdown(AccOutMode, Config.AccessoryOutMode, "Select Lobby Gear") end
     end
 })
 FarmTabs:Add("Accessories", RefreshAccBtn)
