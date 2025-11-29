@@ -742,6 +742,44 @@ local Window = l:CreateWindow({
     }
 });
 
+local function Notify(title, content, icon)
+	if l then l:Notify({ Title = title, Content = content, Icon = icon, Duration = 3 }) end
+end
+
+local BaseProfile = {
+	Banner = "rbxassetid://114772391775993", Avatar = "rbxassetid://84366761557806", Status = true,
+	Badges = {
+		{
+			Icon = "geist:logo-discord", Desc = "Join ANHUB Discord",
+			Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
+		},
+		{
+			Icon = "youtube", Desc = "Subscribe to YouTube",
+			Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Channel link copied!", "youtube") end
+		}
+	}
+}
+
+local function MakeProfile(data)
+	local p = table.clone(BaseProfile)
+	for k, v in pairs(data or {}) do p[k] = v end
+	return p
+end
+
+Window:Tab({
+	Profile = MakeProfile({ Title = "ANHub Script", Desc = "Anime Eternal",Badges = {
+		{
+			Icon = "geist:logo-discord", Title = "Discord", Desc = "Join ANHUB Discord",
+			Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
+		},
+		{
+			Icon = "youtube", Desc = "Subscribe to YouTube",
+			Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Channel link copied!", "youtube") end
+		}
+	} }),
+	SidebarProfile = true
+})
+
 do
     Window:Tag({
         Title = "v" .. ANUI.Version,
