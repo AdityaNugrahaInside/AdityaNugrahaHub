@@ -940,7 +940,7 @@ local function checkDungeon()
         task.wait()
     end
 end
-
+local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/main.lua?v="..math.random()))();
 
 local Window = l:CreateWindow({
     Title = "AN Hub - Anime Weapons",
