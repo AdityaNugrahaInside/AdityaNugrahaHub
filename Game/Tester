@@ -89,6 +89,10 @@ local Config = {
     AutoChance_Pirate = false,
     AutoChance_Wise = false,
     AutoChance_Leve = false,
+    -- [ACCESSORIES CONFIG]
+    AutoEquipAccessories = false,
+    AccessoryInMode = nil,
+    AccessoryOutMode = nil,
     SelectedEnemy = nil,
     ZoneConfigurations = {},
     TargetDungeon = {},
@@ -270,6 +274,15 @@ pcall(function()
                 end
             end
         end
+    end
+end)
+
+-- [LOAD ACCESSORIES DATABASE]
+local AccessoriesConfig = {}
+pcall(function()
+    local AccModuleScript = ConfigsPath:FindFirstChild("MultipleZones") and ConfigsPath.MultipleZones:FindFirstChild("Accessories")
+    if AccModuleScript then
+        AccessoriesConfig = require(AccModuleScript)
     end
 end)
 
@@ -601,6 +614,43 @@ local function GetRewardAssetId(rewardKey)
         end
     end
     return nil
+end
+
+-- [HELPER: GET OWNED ACCESSORIES LIST (WITH ICON)]
+local function GetOwnedAccessories()
+    local list = {}
+    local pData = getgenv().PlayerData
+    if pData and pData.Accessories then
+        for id, owned in pairs(pData.Accessories) do
+            if owned == true then
+                local info = AccessoriesConfig[id]
+                local displayName = info and info.Display or id
+                
+                -- [FEATURE: FETCH IMAGE FROM TEMPLATE]
+                local imageId = "rbxassetid://84366761557806" -- Default placeholder
+                if info and info.Template then
+                    imageId = "rbxassetid://" .. tostring(info.Template)
+                end
+                
+                table.insert(list, {
+                    Title = displayName,
+                    Value = id, -- Internal Name
+                    Icon = imageId, -- FIX: Gunakan Key 'Icon' agar gambar muncul (sama kayak Select Token)
+                    Desc = info and info.Rarity or "Accessory"
+                })
+            end
+        end
+    end
+    table.sort(list, function(a,b) return a.Title < b.Title end)
+    return list
+end
+
+local function FireAccessory(accName)
+    if Reliable then
+        pcall(function()
+            Reliable:FireServer("Accessory Equip", {accName})
+        end)
+    end
 end
 
 -- [MODIFIKASI BARU: UPDATE RefreshEnemyData]
@@ -965,7 +1015,9 @@ local function LogicGamemodes()
     local refreshTimer = 0;
     local lastTeleportedUid = nil;
     local hasTeleportedToBossInRaid = false;
-    while Config.AutoDungeon do
+    local LastAccessoryState = "None"
+
+    while Config.AutoDungeon or Config.AutoEquipAccessories do
         if Window.Destroyed then
             break;
         end;
@@ -983,6 +1035,30 @@ local function LogicGamemodes()
             isFightingZone = true
         elseif currentMap == "Defense" then
             isFightingZone = hasEnemies
+        end
+
+        -- [LOGIC: AUTO EQUIP ACCESSORIES]
+        if Config.AutoEquipAccessories then
+            if isFightingZone then
+                -- Kita sedang di mode tempur
+                if LastAccessoryState ~= "InMode" and Config.AccessoryInMode then
+                    FireAccessory(Config.AccessoryInMode)
+                    l:Notify({Title = "Gear Swap", Content = "Equipped Battle Gear", Icon = "sword", Duration = 2})
+                    LastAccessoryState = "InMode"
+                end
+            else
+                -- Kita di lobby
+                if LastAccessoryState ~= "OutMode" and Config.AccessoryOutMode then
+                    FireAccessory(Config.AccessoryOutMode)
+                    l:Notify({Title = "Gear Swap", Content = "Equipped Lobby Gear", Icon = "home", Duration = 2})
+                    LastAccessoryState = "OutMode"
+                end
+            end
+        end
+
+        if not Config.AutoDungeon then
+            task.wait(1)
+            continue
         end
 
         if currentMap ~= "Unknown" then
@@ -1304,7 +1380,8 @@ local FarmingManagerSection = FarmTab:Section({
 });
 local FarmTabs = CreateTabButtons(FarmingManagerSection, {
     "Zone Farming",
-    "Gamemodes"
+    "Gamemodes",
+    "Accessories"
 })
 
 -- [MODIFIKASI: DROPDOWN UNTUK ENEMIES DENGAN IMAGES]
@@ -1514,6 +1591,56 @@ local ModeToggle = FarmingManagerSection:Toggle({
     end
 });
 FarmTabs:Add("Gamemodes", ModeToggle);
+
+-- [ACCESSORIES UI]
+local AccInMode = FarmingManagerSection:Dropdown({
+    Title = "Select Battle Gear",
+    Multi = false,
+    Values = GetOwnedAccessories(),
+    ImageSize = UDim2.fromOffset(20, 20),
+    ImagePadding = 6,
+    Flag = "AccInMode_Cfg",
+    Callback = function(val)
+        Config.AccessoryInMode = type(val) == "table" and val.Value or val
+    end
+})
+FarmTabs:Add("Accessories", AccInMode)
+
+local AccOutMode = FarmingManagerSection:Dropdown({
+    Title = "Select Lobby Gear",
+    Multi = false,
+    Values = GetOwnedAccessories(),
+    ImageSize = UDim2.fromOffset(20, 20),
+    ImagePadding = 6,
+    Flag = "AccOutMode_Cfg",
+    Callback = function(val)
+        Config.AccessoryOutMode = type(val) == "table" and val.Value or val
+    end
+})
+FarmTabs:Add("Accessories", AccOutMode)
+
+local RefreshAccBtn = FarmingManagerSection:Button({
+    Title = "Refresh Accessories",
+    Icon = "refresh-cw",
+    Callback = function()
+        local list = GetOwnedAccessories()
+        AccInMode:Refresh(list)
+        AccOutMode:Refresh(list)
+    end
+})
+FarmTabs:Add("Accessories", RefreshAccBtn)
+
+local AccToggle = FarmingManagerSection:Toggle({
+    Title = "Auto Equip Accessories",
+    Flag = "AutoEquipAcc_Cfg",
+    Callback = function(val)
+        Config.AutoEquipAccessories = val
+        if val then
+            task.spawn(LogicGamemodes)
+        end
+    end
+})
+FarmTabs:Add("Accessories", AccToggle)
 
 local GeneralTab = MainSection:Tab({
     Title = "General",
