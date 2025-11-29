@@ -9,6 +9,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/ref
 local FolderPath = "ANUI/AnimeWeapons";
 local ExpiryFile = FolderPath .. "/ANHub_Key_Timer.txt";
 local ZoneDBFile = "Zone_Database.json";
+local AccessoryDBFile = "Accessory_Database.json";
 
 local function SecureWipe()
     if not isfile or (not delfile) or (not readfile) or (not listfiles) then
@@ -89,7 +90,6 @@ local Config = {
     AutoChance_Pirate = false,
     AutoChance_Wise = false,
     AutoChance_Leve = false,
-    AutoChance_Sung = false,
     -- [ACCESSORIES CONFIG]
     AutoEquipAccessories = false,
     AccessoryInMode = nil,
@@ -100,6 +100,19 @@ local Config = {
     TargetRaid = {},
     TargetDefense = {}
 };
+
+-- [LOAD ACCESSORY CONFIG]
+if isfile(FolderPath .. "/" .. AccessoryDBFile) then
+    pcall(function()
+        local decoded = HttpService:JSONDecode(readfile(FolderPath .. "/" .. AccessoryDBFile))
+        if decoded then
+            if decoded.AccessoryInMode then Config.AccessoryInMode = decoded.AccessoryInMode end
+            if decoded.AccessoryOutMode then Config.AccessoryOutMode = decoded.AccessoryOutMode end
+            if decoded.AutoEquipAccessories ~= nil then Config.AutoEquipAccessories = decoded.AutoEquipAccessories end
+        end
+    end)
+end
+
 local hrp, humanoid;
 local LastZone = nil;
 local CurrentZoneName = "";
@@ -144,8 +157,7 @@ local ChanceUpgradeTypes = {
     "Breath",
     "Pirate",
     "Wise",
-    "Leve",
-    "Sung"
+    "Leve"
 };
 local EnemyDropdown = nil;
 local RankProgressUI = nil;
@@ -647,6 +659,19 @@ local function GetOwnedAccessories()
     return list
 end
 
+local function SaveAccessoryConfig()
+    if writefile and HttpService then
+        local data = {
+            AccessoryInMode = Config.AccessoryInMode,
+            AccessoryOutMode = Config.AccessoryOutMode,
+            AutoEquipAccessories = Config.AutoEquipAccessories
+        }
+        pcall(function()
+             writefile(FolderPath .. "/" .. AccessoryDBFile, HttpService:JSONEncode(data))
+        end)
+    end
+end
+
 local function FireAccessory(accName)
     if Reliable then
         pcall(function()
@@ -655,71 +680,267 @@ local function FireAccessory(accName)
     end
 end
 
--- [MODIFIKASI BARU: UPDATE RefreshEnemyData]
+-- [YEHE.LUA LOGIC HELPERS]
+local attackRangePart
+local attackRange = 20
+task.spawn(function()
+    while true do
+        attackRangePart = Workspace:FindFirstChild("AttackRange")
+        if attackRangePart then
+            local part = attackRangePart:FindFirstChild("Part")
+            if part then
+                attackRange = part.Size.X / 2
+            end
+        end
+        task.wait(5)
+    end
+end)
+
+local function getPosition(obj)
+    if obj:IsA("Model") then
+        return obj:GetPivot().Position
+    elseif obj:IsA("BasePart") then
+        return obj.Position
+    else
+        return nil
+    end
+end
+
+local function getDistance(obj1, obj2)
+    local pos1, pos2
+    if obj1:IsA("Model") then
+        pos1 = obj1:GetPivot().Position
+    elseif obj1:IsA("BasePart") then
+        pos1 = obj1.Position
+    elseif typeof(obj1) == "Vector3" then
+        pos1 = obj1
+    end
+    if obj2:IsA("Model") then
+        pos2 = obj2:GetPivot().Position
+    elseif obj2:IsA("BasePart") then
+        pos2 = obj2.Position
+    elseif typeof(obj2) == "Vector3" then
+        pos2 = obj2
+    end
+    if pos1 and pos2 then
+        return (pos1 - pos2).Magnitude
+    end
+    return math.huge
+end
+
+local function killDungeon(monster)
+    if not monster then return end
+    local head = monster:FindFirstChild("Head")
+    if not head then return end
+    local hrpToFeet = (hrp.Size.Y / 2) + (humanoid.HipHeight or 2)
+    local safeHeight = -2
+
+    local headPos = getPosition(head)
+    local targetPosition = headPos + Vector3.new(0, hrpToFeet + safeHeight, -attackRange+8)
+    
+    while (Config.AutoDungeon or Config.AutoEquipAccessories) and head.Transparency == 0 and monster and monster.Parent do
+        local currentMap = GetCurrentMapStatus()
+        local isGamemode = string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense")
+        if not isGamemode then break end
+
+        if not hrp or not hrp.Parent then
+            task.wait()
+            if LocalPlayer.Character then hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart") end
+            continue
+        end
+        
+        if getDistance(hrp, monster) > 10000 then
+            return
+        end
+
+        hrp.CFrame = CFrame.new(targetPosition, head.Position)
+        local newtargetPosition = getPosition(head) + Vector3.new(0, hrpToFeet + safeHeight, -attackRange+8)
+        if (targetPosition - getPosition(head)).Magnitude >= attackRange then 
+            targetPosition = newtargetPosition 
+        end
+        
+        if head.Transparency ~= 0 then return end
+        task.wait()
+    end
+end
+
+-- [FUNGSI 1: UI DROPDOWN (STATIC DATA)]
 local function RefreshEnemyData()
     local uiList = {};
-    local seenForUI = {};
-    GlobalEnemyMap = {};
-    local EnemiesFolder = Workspace:FindFirstChild("Enemies");
-    if not EnemiesFolder then
-        return uiList;
-    end;
-    local childCount = #EnemiesFolder:GetChildren();
-    if tick() - LastEnemyScanTime < 1.5 and childCount == LastEnemyChildCount then
-        return CurrentZoneEnemiesCache;
-    end;
-    LastEnemyScanTime = tick();
-    LastEnemyChildCount = childCount;
-    for _, v in pairs(getgc(true)) do
-        if type(v) == "table" then
-            local config = rawget(v, "Config");
-            local alive = rawget(v, "Alive");
-            local uid = rawget(v, "Uid");
-            local dataSection = rawget(v, "Data");
-            if config and alive == true and uid and dataSection and dataSection.CFrame then
-                local display = config.Display or "Unknown";
-                local realName = rawget(v, "Character") and v.Character.Name or display;
-                if not GlobalEnemyMap[realName] then
-                    GlobalEnemyMap[realName] = {};
-                end;
-                table.insert(GlobalEnemyMap[realName], v);
-                if not seenForUI[realName] then
-                    seenForUI[realName] = true;
-
-                    -- [BARU: Ambil Gambar dari ChanceReward]
+    local addedCheck = {}; 
+    
+    if EnemiesConfig and CurrentZoneName and CurrentZoneName ~= "" and CurrentZoneName ~= "Unknown" then
+        for key, data in pairs(EnemiesConfig) do
+            if data.Zone == CurrentZoneName then
+                local displayName = data.Display or key
+                
+                if not addedCheck[displayName] then
+                    addedCheck[displayName] = true
+                    
                     local rewardImages = {}
-                    if config.ChanceReward then
-                        for rewardKey, _ in pairs(config.ChanceReward) do
+                    if data.ChanceReward then
+                        for rewardKey, _ in pairs(data.ChanceReward) do
                             local img = GetRewardAssetId(rewardKey)
                             if img then
                                 table.insert(rewardImages, img)
                             end
                         end
                     end
-                    -- Urutkan agar rapi (opsional)
                     table.sort(rewardImages)
 
                     table.insert(uiList, {
-                        Title = display .. " (" .. (config.Difficult or "Normal") .. ")",
-                        Value = realName,
-                        Desc = "HP: " .. FormatNumber((config.MaxHealth or 0)),
-                        HP = config.MaxHealth or 0,
-                        Images = rewardImages -- Field Images ditambahkan untuk Dropdown
+                        Title = displayName .. " (" .. (data.Difficult or "Normal") .. ")",
+                        Value = displayName,
+                        Desc = "HP: " .. FormatNumber((data.MaxHealth or 0)),
+                        HP = data.MaxHealth or 0,
+                        Images = rewardImages
                     });
-                end;
-            end;
-        end;
-    end;
-    table.sort(uiList, function(a, b)
-        return a.HP < b.HP;
-    end);
+                end
+            end
+        end
+    end
+    
+    table.sort(uiList, function(a, b) return a.HP < b.HP end);
     CurrentZoneEnemiesCache = uiList;
     return uiList;
 end;
 
+-- [FUNGSI 2: SCANNER LOGIC (DYNAMIC DATA)]
+local function UpdateLiveEnemies()
+    local newMap = {}
+    for _, v in pairs(getgc(true)) do
+        if type(v) == "table" then
+            local rawConfig = rawget(v, "Config")
+            local alive = rawget(v, "Alive")
+            local data = rawget(v, "Data")
+            
+            if rawConfig and alive == true and data and data.CFrame then
+                local keyName = rawConfig.Display or (v.Character and v.Character.Name) or "Unknown"
+                
+                if not newMap[keyName] then
+                    newMap[keyName] = {}
+                end
+                table.insert(newMap[keyName], v)
+            end
+        end
+    end
+    GlobalEnemyMap = newMap
+end
 
+-- [WAVE TRACKING VARIABLES FROM YEHE.LUA]
+local waveGui = game:GetService("Players").LocalPlayer.PlayerGui.Screen.Hud.gamemode.Raid.wave.amount
+local roomGui = game:GetService("Players").LocalPlayer.PlayerGui.Screen.Hud.gamemode.Dungeon.room.amount
+local defGui = game:GetService("Players").LocalPlayer.PlayerGui.Screen.Hud.gamemode.Defense.wave.amount
 
-local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/main.lua?v="..math.random()))();
+local waveRaid = 0; local waveDungeon = 0; local waveDef = 0;
+local targetWaveRaid = 500; local targetWaveDef = 500; local targetWaveDungeon = 500;
+
+pcall(function()
+    roomGui:GetPropertyChangedSignal("Text"):Connect(function()
+        waveDungeon = tonumber((string.gsub(roomGui.Text, "Room: ", ""))) or 0
+    end)
+    waveGui:GetPropertyChangedSignal("Text"):Connect(function()
+        local txt = waveGui.Text
+        waveRaid = tonumber((string.gsub(txt, "Room: ", "")))
+        if not waveRaid then
+            waveRaid = tonumber((string.gsub(txt, "Wave: ", "")))
+        end
+        waveRaid = waveRaid or 0
+    end)
+    defGui:GetPropertyChangedSignal("Text"):Connect(function()
+        local txt = defGui.Text
+        waveDef = tonumber((string.gsub(txt, "Room: ", "")))
+        if not waveDef then
+            waveDef = tonumber((string.gsub(txt, "Wave: ", "")))
+        end
+        waveDef = waveDef or 0
+    end)
+end)
+
+local function killDungeon(monster)
+    if not monster then return end
+    local head = monster:FindFirstChild("Head")
+    if not head then return end
+    local hrpToFeet = (hrp.Size.Y / 2) + (humanoid.HipHeight or 2)
+    local safeHeight = -2
+
+    local headPos = getPosition(head)
+    local targetPosition = headPos + Vector3.new(0, hrpToFeet + safeHeight, -attackRange+8)
+    
+    while (Config.AutoDungeon or Config.AutoEquipAccessories) and head.Transparency == 0 and monster and monster.Parent do
+        local currentMap = GetCurrentMapStatus()
+        local isGamemode = string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense")
+        if not isGamemode then break end
+
+        if not hrp or not hrp.Parent then
+            task.wait()
+            if LocalPlayer.Character then hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart") end
+            continue
+        end
+        
+        if getDistance(hrp, monster) > 10000 then
+            return
+        end
+
+        hrp.CFrame = CFrame.new(targetPosition)
+        local newtargetPosition = getPosition(head) + Vector3.new(0, hrpToFeet + safeHeight, -attackRange+8)
+        if (targetPosition - getPosition(head)).Magnitude >= attackRange then 
+            targetPosition = newtargetPosition 
+        end
+        
+        if head.Transparency ~= 0 then return end
+        task.wait()
+    end
+end
+
+local function checkDungeon()
+    -- Loop while in gamemode and conditions met
+    while (Config.AutoDungeon) do
+        local currentMap = GetCurrentMapStatus()
+        local isGamemode = string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense")
+        
+        if not isGamemode then break end
+        
+        -- Check limits
+        if (string.find(currentMap, "Dungeon") and waveDungeon > targetWaveDungeon) or
+           (string.find(currentMap, "Raid") and waveRaid > targetWaveRaid) or
+           (string.find(currentMap, "Defense") and waveDef > targetWaveDef) then
+            
+            if LastZone and LastZone ~= "" and LastZone ~= "Unknown" then
+                 if Reliable then
+                    pcall(function()
+                        Reliable:FireServer("Zone Teleport", { LastZone })
+                    end)
+                end
+                task.wait(6)
+            end
+            break
+        end
+
+        local monsters = Workspace.Enemies:GetChildren()
+        local killedAny = false
+        for _, monster in pairs(monsters) do
+            local Head = monster:FindFirstChild("Head")
+            if not Head or Head.Transparency ~= 0 then 
+                continue 
+            end
+            if not hrp then 
+                task.wait()
+                continue
+            end
+            local dis = getDistance(hrp, monster)
+            if dis >= 10000 then -- Using simplified distance check
+                continue 
+            end
+            
+            killDungeon(monster)
+            killedAny = true
+        end
+        if not killedAny then task.wait(0.5) end
+        task.wait()
+    end
+end
+
 
 local Window = l:CreateWindow({
     Title = "AN Hub - Anime Weapons",
@@ -895,39 +1116,54 @@ pcall(function()
 end);
 local function LogicAutoFarm()
     local currentTargetObj = nil;
+    
     while Config.AutoFarm do
-        if Window.Destroyed then
-            break;
-        end;
-        if currentTargetObj then
-            if currentTargetObj.Alive == false or (not currentTargetObj.Data) or (not currentTargetObj.Uid) then
-                currentTargetObj = nil;
+        if Window.Destroyed then break end
+
+        if not hrp or not hrp.Parent or not humanoid or humanoid.Health <= 0 then
+            currentTargetObj = nil
+            task.wait(1) 
+            if LocalPlayer.Character then
+                hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+            end
+        else
+            if currentTargetObj then
+                if currentTargetObj.Alive == false or (not currentTargetObj.Data) or (not currentTargetObj.Uid) or (not currentTargetObj.Parent) then
+                    currentTargetObj = nil;
+                end;
             end;
-        end;
-        if not currentTargetObj then
-            local targetName = Config.SelectedEnemy;
-            if targetName and hrp and GlobalEnemyMap[targetName] then
-                local enemyList = GlobalEnemyMap[targetName] or {};
-                local closest, minDst = nil, math.huge;
-                local myPos = hrp.Position;
-                for _, enemyObj in ipairs(enemyList) do
-                    if enemyObj.Alive == true and enemyObj.Data and enemyObj.Data.CFrame then
-                        local dst = (myPos - enemyObj.Data.CFrame.Position).Magnitude;
-                        if dst < minDst then
-                            minDst = dst;
-                            closest = enemyObj;
+
+            if not currentTargetObj then
+                local targetName = Config.SelectedEnemy;
+                if targetName and GlobalEnemyMap[targetName] then
+                    local enemyList = GlobalEnemyMap[targetName]
+                    local closest, minDst = nil, math.huge;
+                    local myPos = hrp.Position;
+
+                    for _, enemyObj in ipairs(enemyList) do
+                        if enemyObj.Alive == true and enemyObj.Data and enemyObj.Data.CFrame then
+                            local dst = (myPos - enemyObj.Data.CFrame.Position).Magnitude;
+                            if dst < minDst then
+                                minDst = dst;
+                                closest = enemyObj;
+                            end;
                         end;
                     end;
-                end;
-                if closest then
-                    currentTargetObj = closest;
-                    if hrp and currentTargetObj.Data and currentTargetObj.Data.CFrame then
-                        hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
+
+                    if closest then
+                        currentTargetObj = closest;
                     end;
                 end;
             end;
-        end;
-        task.wait(1);
+
+            if currentTargetObj and currentTargetObj.Data and currentTargetObj.Data.CFrame then
+                pcall(function()
+                    hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
+                end)
+            end;
+        end
+        task.wait(); 
     end;
 end;
 local function MaintainAutoStatus()
@@ -1066,69 +1302,10 @@ local function LogicGamemodes()
         if currentMap ~= "Unknown" then
             if isFightingZone then
                 wasInGamemode = true;
-
-                if os.time() - refreshTimer > 10 then
-                    RefreshEnemyData();
-                    refreshTimer = os.time();
-                end;
-                if currentTargetObj then
-                    if currentTargetObj.Alive == false or (not currentTargetObj.Data) then
-                        currentTargetObj = nil;
-                    end;
-                end;
-
-                local isRaid = string.find(currentMap, "Raid")
-                local isDefense = string.find(currentMap, "Defense")
-
-                if not currentTargetObj and hrp then
-                    local closest, minDst = nil, math.huge;
-                    local myPos = hrp.Position;
-                    local bossFound = false
-
-                    for _, enemyList in pairs(GlobalEnemyMap) do
-                        for _, enemyObj in ipairs(enemyList) do
-                            if enemyObj.Alive == true and enemyObj.Data and enemyObj.Data.CFrame then
-                                local dst = (myPos - enemyObj.Data.CFrame.Position).Magnitude;
-                                local config = rawget(enemyObj, "Config")
-                                local isBoss = config and config.Difficult == "Emperor"
-
-                                if isRaid and isBoss then
-                                    closest = enemyObj
-                                    bossFound = true
-                                    break
-                                end
-
-                                if dst < minDst then
-                                    minDst = dst;
-                                    if not bossFound then
-                                        closest = enemyObj;
-                                    end
-                                end;
-                            end;
-                        end;
-                        if bossFound then break end
-                    end;
-
-                    if closest then
-                        currentTargetObj = closest;
-                        if currentTargetObj.Data and currentTargetObj.Data.CFrame then
-                            local config = rawget(currentTargetObj, "Config")
-                            local isBoss = config and config.Difficult == "Emperor"
-                            local targetUid = currentTargetObj.Uid
-
-                            if isRaid then
-                                if isBoss and (not hasTeleportedToBossInRaid) then
-                                    hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
-                                    hasTeleportedToBossInRaid = true;
-                                end
-                            else
-                                hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
-                                lastTeleportedUid = targetUid
-                            end
-                        end;
-                    end;
-                end;
-                task.wait(0.1);
+                if Config.AutoDungeon then
+                    checkDungeon()
+                end
+                task.wait(1);
             elseif inLobbyZone or wasInGamemode and (not isFightingZone) then
                 currentTargetObj = nil;
                 lastTeleportedUid = nil;
@@ -1632,6 +1809,7 @@ AccInMode = FarmingManagerSection:Dropdown({
         local v = type(val) == "table" and val.Value or val
         Config.AccessoryInMode = v
         UpdateAccDropdown(AccInMode, v, "Select Battle Gear")
+        SaveAccessoryConfig()
     end
 })
 FarmTabs:Add("Accessories", AccInMode)
@@ -1653,6 +1831,7 @@ AccOutMode = FarmingManagerSection:Dropdown({
         local v = type(val) == "table" and val.Value or val
         Config.AccessoryOutMode = v
         UpdateAccDropdown(AccOutMode, v, "Select Lobby Gear")
+        SaveAccessoryConfig()
     end
 })
 FarmTabs:Add("Accessories", AccOutMode)
@@ -1680,6 +1859,7 @@ local AccToggle = FarmingManagerSection:Toggle({
     Flag = "AutoEquipAcc_Cfg",
     Callback = function(val)
         Config.AutoEquipAccessories = val
+        SaveAccessoryConfig()
         if val then
             task.spawn(LogicGamemodes)
         end
