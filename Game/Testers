@@ -5,6 +5,42 @@ until game:IsLoaded();
 -- [LOADING SCREEN DARI FILE 2]
 loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/loading.lua"))()
 
+-- [FIX ERROR PATCH: TRANSITION UI]
+-- Fungsi ini memperbaiki error "main is not a valid member of ImageLabel Transition"
+-- dengan menyuntikkan dummy object ke dalam aset game agar script game tidak crash.
+task.spawn(function()
+    pcall(function()
+        task.wait(1) -- Beri waktu asset loading
+        if shared and shared.Assets and shared.Assets.Interface and shared.Assets.Interface.Screens then
+            local transitionUI = shared.Assets.Interface.Screens:FindFirstChild("Transition")
+            if transitionUI then
+                -- Cek apakah folder 'main' ada, jika tidak, kita buatkan
+                local mainFrame = transitionUI:FindFirstChild("main")
+                if not mainFrame then
+                    mainFrame = Instance.new("Frame")
+                    mainFrame.Name = "main"
+                    mainFrame.Parent = transitionUI
+                    mainFrame.BackgroundTransparency = 1
+                    mainFrame.Size = UDim2.fromScale(1, 1)
+                end
+                
+                -- Daftar bagian yang dicari oleh script Transition.c (logo, circle, dll)
+                local requiredParts = {"logo", "circle", "biggerCircle", "bright", "brightCircle"}
+                for _, partName in ipairs(requiredParts) do
+                    if not mainFrame:FindFirstChild(partName) then
+                        local dummyPart = Instance.new("ImageLabel")
+                        dummyPart.Name = partName
+                        dummyPart.Parent = mainFrame
+                        dummyPart.BackgroundTransparency = 1
+                        dummyPart.ImageTransparency = 1 -- Invisible agar tidak mengganggu visual
+                    end
+                end
+                -- print("ANHub: Game Transition UI Patched Successfully!")
+            end
+        end
+    end)
+end)
+
 -- [MODIFIKASI 1: UPDATE FOLDER PATH]
 local FolderPath = "ANUI/AnimeWeapons";
 local ExpiryFile = FolderPath .. "/ANHub_Key_Timer.txt";
@@ -89,6 +125,7 @@ local Config = {
     AutoChance_Pirate = false,
     AutoChance_Wise = false,
     AutoChance_Leve = false,
+    AutoChance_Sung = false,
     -- [ACCESSORIES CONFIG]
     AutoEquipAccessories = false,
     AccessoryInMode = nil,
@@ -143,7 +180,8 @@ local ChanceUpgradeTypes = {
     "Breath",
     "Pirate",
     "Wise",
-    "Leve"
+    "Leve",
+    "Sung"
 };
 local EnemyDropdown = nil;
 local RankProgressUI = nil;
@@ -1786,7 +1824,7 @@ local AccToggle = FarmingManagerSection:Toggle({
         Config.AutoEquipAccessories = val
         if val then
             task.spawn(LogicGamemodes)
-        end
+        end;
     end
 })
 FarmTabs:Add("Accessories", AccToggle)
