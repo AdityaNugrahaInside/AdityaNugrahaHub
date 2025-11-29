@@ -1009,6 +1009,57 @@ task.spawn(function()
         EnemiesFolder.ChildRemoved:Connect(TriggerRefresh)
     end
 end);
+
+-- [MODIFICATION: Yehe.lua Wave Detection Logic]
+local waveRaid = 0; local waveDungeon = 0; local waveDef = 0; local waveShadow = 0;
+local function SetupWaveDetection()
+    local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui", 10)
+    if not PlayerGui then return end
+    
+    local function safeConnect(pathTable, callback)
+        local obj = PlayerGui
+        for _, name in ipairs(pathTable) do
+             obj = obj:WaitForChild(name, 5)
+             if not obj then return end
+        end
+        
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+            pcall(function() callback(obj.Text) end) -- Initial check
+            obj:GetPropertyChangedSignal("Text"):Connect(function()
+                pcall(function() callback(obj.Text) end)
+            end)
+        end
+    end
+
+    task.spawn(function()
+        safeConnect({"Screen", "Hud", "gamemode", "Dungeon", "room", "amount"}, function(txt)
+            waveDungeon = tonumber((string.gsub(txt, "Room: ", ""))) or 0
+        end)
+    end)
+    task.spawn(function()
+        safeConnect({"Screen", "Hud", "gamemode", "Raid", "wave", "amount"}, function(txt)
+            local val = tonumber((string.gsub(txt, "Room: ", "")))
+            if not val then val = tonumber((string.gsub(txt, "Wave: ", ""))) end
+            waveRaid = val or 0
+        end)
+    end)
+    task.spawn(function()
+        safeConnect({"Screen", "Hud", "gamemode", "Defense", "wave", "amount"}, function(txt)
+            local val = tonumber((string.gsub(txt, "Room: ", "")))
+            if not val then val = tonumber((string.gsub(txt, "Wave: ", ""))) end
+            waveDef = val or 0
+        end)
+    end)
+    task.spawn(function()
+        safeConnect({"Screen", "Hud", "gamemode", "ShadowGate", "wave", "amount"}, function(txt)
+            local val = tonumber((string.gsub(txt, "Room: ", "")))
+            if not val then val = tonumber((string.gsub(txt, "Wave: ", ""))) end
+            waveShadow = val or 0
+        end)
+    end)
+end
+task.spawn(SetupWaveDetection)
+
 local function LogicGamemodes()
     local wasInGamemode = false;
     local currentTargetObj = nil;
@@ -1131,22 +1182,39 @@ local function LogicGamemodes()
                 currentTargetObj = nil;
                 lastTeleportedUid = nil;
                 hasTeleportedToBossInRaid = false;
+                
+                -- [MODIFICATION: Yehe.lua Robust Teleport Back Logic]
                 if LastZone and LastZone ~= "" and not string.find(LastZone, "Dungeon:") and not string.find(LastZone, "Raid:") and not string.find(LastZone, "Defense:") and LastZone ~= "Unknown" then
                     l:Notify({
                         Title = "Mode Finished",
-                        Content = "In Lobby -> Returning to " .. LastZone,
+                        Content = "Returning to " .. LastZone,
                         Icon = "map-pin",
                         Duration = 3
                     });
-                    if Reliable then
-                        pcall(function()
-                            Reliable:FireServer("Zone Teleport", {
-                                LastZone
-                            });
-                        end);
-                    end;
+                    
+                    -- Retry loop (Yehe.lua logic adaptation)
+                    local attempts = 0
+                    while attempts < 10 do -- Try for ~20 seconds
+                        if Reliable then
+                            pcall(function()
+                                Reliable:FireServer("Zone Teleport", { LastZone });
+                            end);
+                        end;
+                        
+                        -- Check if we arrived
+                        local checkMap = GetCurrentMapStatus()
+                        if checkMap == LastZone then
+                            break
+                        end
+                        
+                        -- If we are in a different Lobby zone (not the one we want, but safe), maybe stop?
+                        -- Yehe forces teleport to specific map. We force to LastZone.
+                        
+                        attempts = attempts + 1
+                        task.wait(2); 
+                    end
+                    
                     wasInGamemode = false;
-                    task.wait(4);
                 else
                     wasInGamemode = false;
                 end;
