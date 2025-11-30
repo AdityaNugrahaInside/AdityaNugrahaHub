@@ -1524,7 +1524,11 @@ local FM_Category = FarmTab:Category({
         {Title="Gamemodes", Icon="activity"},
         {Title="Accessories", Icon="package"},
         {Title="Exchange", Icon="swap"},
-        {Title="Crate Roll", Icon="package"}
+        {Title="Crate Roll", Icon="package"},
+        {Title="Upgrade: Yen", Icon="coins"},
+        {Title="Upgrade: Token", Icon="layers"},
+        {Title="Upgrade: Rank", Icon="shield"},
+        {Title="Upgrade: Trainer", Icon="sword"}
     },
     Callback = FM_OnChange
 })
@@ -2126,11 +2130,7 @@ local function GetStatsIcon()
     end);
     return icon;
 end;
-local YenMainSection = YenTab:Section({
-    Title = "Stats Upgrade Manager",
-    Icon = GetStatsIcon(),
-    Opened = true
-});
+local YenMainSection = FarmTab
 local function GetYenIcon()
     local icon = "rbxassetid://84366761557806";
     pcall(function()
@@ -2145,39 +2145,9 @@ local function GetTrainerIcon()
     end);
     return icon;
 end;
-local YenTabs = CreateTabButtons(YenMainSection, {"Yen", "Token", "Rank", "Trainer"})
 local upgradeOrder = {"Luck", "Damage", "Yen", "Mastery", "Critical"}
 
-task.spawn(function()
-    task.wait(0.1)
-
-    local function SetupButton(btnName, iconId)
-        local btn = YenTabs.ButtonObjects[btnName]
-        if btn then
-            local lbl = btn:FindFirstChildOfClass("TextLabel")
-            if lbl then
-                lbl.Size = UDim2.new(1, -25, 1, 0)
-                lbl.Position = UDim2.new(0, 25, 0, 0)
-                lbl.TextXAlignment = Enum.TextXAlignment.Left
-            end
-
-            local iconImg = Instance.new("ImageLabel")
-            iconImg.Name = btnName.."Icon"
-            iconImg.Parent = btn
-            iconImg.Size = UDim2.fromOffset(20, 20)
-            iconImg.AnchorPoint = Vector2.new(0, 0.5)
-            iconImg.Position = UDim2.new(0, 0, 0.5, 0)
-            iconImg.BackgroundTransparency = 1
-            iconImg.Image = iconId
-            iconImg.ScaleType = Enum.ScaleType.Fit
-        end
-    end
-
-    SetupButton("Yen", GetYenIcon())
-    SetupButton("Token", "rbxassetid://124644932563791")
-    SetupButton("Rank", GetDynamicRankIcon())
-    SetupButton("Trainer", GetTrainerIcon())
-end)
+-- Using FarmTab categories; no sub-tab buttons needed
 
 local _yenGroup
 local _yenCount = 0
@@ -2185,7 +2155,7 @@ for _, name in ipairs(upgradeOrder) do
     if YenUpgradeConfig[name] then
         if _yenCount % 2 == 0 then
             _yenGroup = YenMainSection:Group({})
-            YenTabs:Add("Yen", _yenGroup)
+            FM_Add("Upgrade: Yen", _yenGroup)
         end
         local myToggle = _yenGroup:Toggle({
             Title = name, Flag = "AutoYen_" .. name, Callback = function(val) Config["AutoYen_" .. name] = val end
@@ -2207,7 +2177,7 @@ if TokenUpgradeConfig then
     for _, name in ipairs(sortedTokens) do
         if _tokenCount % 2 == 0 then
             _tokenGroup = YenMainSection:Group({})
-            YenTabs:Add("Token", _tokenGroup)
+            FM_Add("Upgrade: Token", _tokenGroup)
         end
         local myToggle = _tokenGroup:Toggle({
             Title = name, Flag = "AutoToken_" .. name, Callback = function(val) Config["AutoToken_" .. name] = val end
@@ -2218,17 +2188,17 @@ if TokenUpgradeConfig then
 end
 
 RankProgressUI = YenMainSection:Paragraph({ Title = "Rank Progress", Desc = "Waiting for data...", Image = GetDynamicRankIcon(), ImageSize = 40 })
-YenTabs:Add("Rank", RankProgressUI)
+FM_Add("Upgrade: Rank", RankProgressUI)
 
 local RankToggle = YenMainSection:Toggle({ Title = "Auto Rank Up", Flag = "AutoRankUp_Cfg", Callback = function(val) Config.AutoRankUp = val end })
-YenTabs:Add("Rank", RankToggle)
+FM_Add("Upgrade: Rank", RankToggle)
 
 local _chanceGroup
 local _chanceCount = 0
 for _, name in ipairs(ChanceUpgradeTypes) do
     if _chanceCount % 2 == 0 then
         _chanceGroup = YenMainSection:Group({})
-        YenTabs:Add("Trainer", _chanceGroup)
+        FM_Add("Upgrade: Trainer", _chanceGroup)
     end
     local myToggle = _chanceGroup:Toggle({
         Title = "Loading...",
@@ -2244,7 +2214,7 @@ end
 if MagicEyesModule then
     if _chanceCount % 2 == 0 then
         _chanceGroup = YenMainSection:Group({})
-        YenTabs:Add("Trainer", _chanceGroup)
+        FM_Add("Upgrade: Trainer", _chanceGroup)
     end
 
     local MagicEyeToggle = _chanceGroup:Toggle({
@@ -2359,7 +2329,7 @@ end
 if DemonArtModule then
     if _chanceCount % 2 == 0 then
         _chanceGroup = YenMainSection:Group({})
-        YenTabs:Add("Trainer", _chanceGroup)
+        FM_Add("Upgrade: Trainer", _chanceGroup)
     end
 
     local DemonArtToggle = _chanceGroup:Toggle({
@@ -2831,7 +2801,6 @@ local AllSections = {
     CommunitySection,
     MainSection,
     FarmTab,
-    YenMainSection,
     ConfigSection,
     SecuritySection
 };
