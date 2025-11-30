@@ -96,6 +96,9 @@ local Config = {
     AutoEquipAccessories = false,
     AccessoryInMode = nil,
     AccessoryOutMode = nil,
+    AutoJoinRaid = false,
+    AutoJoinDungeon = false,
+    AutoJoinDefense = false,
     TargetWaveDungeon = 500,
     TargetWaveRaid = 500,
     TargetWaveDef = 500,
@@ -1638,178 +1641,86 @@ local FarmToggle = FarmTab:Toggle({
     end
 });
 FM_Add("Zone Farming", FarmToggle);
-local DgnDrop = FarmTab:Dropdown({
-    Title = "Select Dungeon",
-    Multi = true,
-    AllowNone = true,
-    Flag = "DungeonDiff_Cfg",
-    Values = dungeonList,
+-- [GAMEMODES: ADAPTASI YEHE - TOGGLES]
+local function JoinGamemode(mode)
+    if Reliable then
+        pcall(function()
+            Reliable:FireServer("Join Gamemode", { mode })
+        end)
+    end
+end
+local AutoJoinRaid = FarmTab:Toggle({
+    Title = "Auto Join Raid",
+    Flag = "AutoJoinRaid_Cfg",
     Callback = function(val)
-        local t = {};
-        for _, v in pairs(val) do
-            table.insert(t, type(v) == "table" and v.Value or v);
-        end;
-        Config.TargetDungeon = t;
+        Config.AutoJoinRaid = val
+        if val then
+            task.spawn(function()
+                while Config.AutoJoinRaid and not Window.Destroyed do
+                    local m = GetCurrentMapStatus()
+                    if not string.find(m, "Raid") then
+                        JoinGamemode("Raid")
+                        task.wait(5)
+                    else
+                        task.wait(1)
+                    end
+                end
+            end)
+        end
     end
-});
-FM_Add("Gamemodes", DgnDrop);
-
-task.spawn(function()
-    while not Window.Destroyed do
-        local t = os.date("*t");
-        local currentTotalSeconds = t.min * 60 + t.sec;
-        local newList = {};
-
-        for _, item in ipairs(dungeonList) do
-            local dName = item.Value;
-            local data = dungeonDB[dName];
-            if data then
-                local startMin = data.Time;
-                local startTotalSeconds = startMin * 60;
-                local diff = startTotalSeconds - currentTotalSeconds;
-                if diff < 0 then
-                    diff = diff + 3600;
-                end;
-                local m = math.floor(diff / 60);
-                local s = diff % 60;
-                local timeStr = string.format("%02d:%02d", m, s);
-
-                table.insert(newList, {
-                    Title = item.Title,
-                    Value = item.Value,
-                    Desc = data.BaseDesc .. " | Starts in: " .. timeStr
-                });
-            else
-                table.insert(newList, item);
-            end;
-        end;
-
-        if DgnDrop and DgnDrop.Refresh then
-            pcall(function()
-                DgnDrop:Refresh(newList);
-            end);
-        end;
-        task.wait(1);
-    end;
-end);
-local RaidDrop = FarmTab:Dropdown({
-    Title = "Select Raid",
-    Multi = true,
-    AllowNone = true,
-    Flag = "RaidDiff_Cfg",
-    Values = raidList,
+})
+FM_Add("Gamemodes", AutoJoinRaid)
+local AutoJoinDungeon = FarmTab:Toggle({
+    Title = "Auto Join Dungeon",
+    Flag = "AutoJoinDungeon_Cfg",
     Callback = function(val)
-        local t = {};
-        for _, v in pairs(val) do
-            table.insert(t, type(v) == "table" and v.Value or v);
-        end;
-        Config.TargetRaid = t;
+        Config.AutoJoinDungeon = val
+        if val then
+            task.spawn(function()
+                while Config.AutoJoinDungeon and not Window.Destroyed do
+                    local m = GetCurrentMapStatus()
+                    if not string.find(m, "Dungeon") then
+                        JoinGamemode("Dungeon")
+                        task.wait(5)
+                    else
+                        task.wait(1)
+                    end
+                end
+            end)
+        end
     end
-});
-FM_Add("Gamemodes", RaidDrop);
-local DefenseDrop = FarmTab:Dropdown({
-    Title = "Select Defense",
-    Multi = true,
-    AllowNone = true,
-    Flag = "DefenseDiff_Cfg",
-    Values = defenseList,
+})
+FM_Add("Gamemodes", AutoJoinDungeon)
+local AutoJoinDefense = FarmTab:Toggle({
+    Title = "Auto Join Defense",
+    Flag = "AutoJoinDefense_Cfg",
     Callback = function(val)
-        local t = {};
-        for _, v in pairs(val) do
-            table.insert(t, type(v) == "table" and v.Value or v);
-        end;
-        Config.TargetDefense = t;
+        Config.AutoJoinDefense = val
+        if val then
+            task.spawn(function()
+                while Config.AutoJoinDefense and not Window.Destroyed do
+                    local m = GetCurrentMapStatus()
+                    if not string.find(m, "Defense") then
+                        JoinGamemode("Defense")
+                        task.wait(5)
+                    else
+                        task.wait(1)
+                    end
+                end
+            end)
+        end
     end
-});
-FM_Add("Gamemodes", DefenseDrop);
-
-task.spawn(function()
-    local function GetNextTimeDiff(times, currentMin, currentSec)
-        if not times or #times == 0 then return 0 end
-        table.sort(times)
-
-        for _, t in ipairs(times) do
-            if t > currentMin then
-                return (t - currentMin) * 60 - currentSec
-            end
-        end
-
-        local firstTime = times[1]
-        return (60 - currentMin + firstTime) * 60 - currentSec
-    end
-
-    while not Window.Destroyed do
-        local t = os.date("*t")
-        local currentMin = t.min
-        local currentSec = t.sec
-
-        local newRaidList = {}
-        for _, item in ipairs(raidList) do
-            local rName = item.Value
-            local data = raidDB[rName]
-            if data and data.Times then
-                local diff = GetNextTimeDiff(data.Times, currentMin, currentSec)
-                if diff < 0 then diff = 0 end
-
-                local m = math.floor(diff / 60)
-                local s = diff % 60
-                local timeStr = string.format("%02d:%02d", m, s)
-
-                table.insert(newRaidList, {
-                    Title = item.Title,
-                    Value = item.Value,
-                    Desc = data.BaseDesc .. " | Starts in: " .. timeStr
-                })
-            else
-                table.insert(newRaidList, item)
-            end
-        end
-
-        if RaidDrop and RaidDrop.Refresh then
-            pcall(function() RaidDrop:Refresh(newRaidList) end)
-        end
-
-        local newDefenseList = {}
-        for _, item in ipairs(defenseList) do
-            local dName = item.Value
-            local data = defenseDB[dName]
-            if data and data.Times then
-                local diff = GetNextTimeDiff(data.Times, currentMin, currentSec)
-                if diff < 0 then diff = 0 end
-
-                local m = math.floor(diff / 60)
-                local s = diff % 60
-                local timeStr = string.format("%02d:%02d", m, s)
-
-                table.insert(newDefenseList, {
-                    Title = item.Title,
-                    Value = item.Value,
-                    Desc = data.BaseDesc .. " | Starts in: " .. timeStr
-                })
-            else
-                table.insert(newDefenseList, item)
-            end
-        end
-
-        if DefenseDrop and DefenseDrop.Refresh then
-            pcall(function() DefenseDrop:Refresh(newDefenseList) end)
-        end
-
-        task.wait(1)
-    end
-end)
-
-local ModeToggle = FarmTab:Toggle({
-    Title = "Auto Join & Kill",
+})
+FM_Add("Gamemodes", AutoJoinDefense)
+local AutoKillToggle = FarmTab:Toggle({
+    Title = "Auto Kill (Dungeons/Raids)",
     Flag = "AutoDungeon_Cfg",
     Callback = function(val)
-        Config.AutoDungeon = val;
-        if val then
-            task.spawn(LogicGamemodes);
-        end;
+        Config.AutoDungeon = val
+        if val then task.spawn(LogicGamemodes) end
     end
-});
-FM_Add("Gamemodes", ModeToggle);
+})
+FM_Add("Gamemodes", AutoKillToggle)
 
 -- [ACCESSORIES UI]
 local function UpdateAccDropdown(dropdown, val, defaultTitle)
