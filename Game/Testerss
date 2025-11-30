@@ -1494,11 +1494,7 @@ local FarmTab = MainSection:Tab({
     Title = "Farming",
     Icon = "swords"
 });
-local FarmingManagerSection = FarmTab:Section({
-    Title = "Farming Manager",
-    Icon = "activity",
-    Opened = true
-});
+
 local FM_Categories = {}
 local function FM_GetElementFrame(elem)
     local f = rawget(elem, "ElementFrame") or (elem.UIElements and elem.UIElements.Main) or rawget(elem, "GroupFrame")
@@ -1520,7 +1516,7 @@ local function FM_OnChange(selected)
         end
     end
 end
-local FM_Category = FarmingManagerSection:Category({
+local FM_Category = FarmTab:Category({
     Title = "Select Category",
     Default = "Zone Farming",
     Options = {
@@ -1530,10 +1526,10 @@ local FM_Category = FarmingManagerSection:Category({
     },
     Callback = FM_OnChange
 })
-FarmingManagerSection:Space({Columns=1})
+FarmTab:Space({Columns=1})
 
 -- [MODIFIKASI: DROPDOWN UNTUK ENEMIES DENGAN IMAGES]
-EnemyDropdown = FarmingManagerSection:Dropdown({
+EnemyDropdown = FarmTab:Dropdown({
     Title = "Select Enemy",
     Multi = false,
     Values = {},
@@ -1548,7 +1544,7 @@ EnemyDropdown = FarmingManagerSection:Dropdown({
     end
 });
 FM_Add("Zone Farming", EnemyDropdown);
-local RefreshBtn = FarmingManagerSection:Button({
+local RefreshBtn = FarmTab:Button({
     Title = "Refresh List",
     Icon = "refresh-cw",
     Callback = function()
@@ -1556,7 +1552,7 @@ local RefreshBtn = FarmingManagerSection:Button({
     end
 });
 FM_Add("Zone Farming", RefreshBtn);
-local FarmToggle = FarmingManagerSection:Toggle({
+local FarmToggle = FarmTab:Toggle({
     Title = "Auto Farm",
     Flag = "AutoFarm_Cfg",
     Callback = function(val)
@@ -1567,7 +1563,7 @@ local FarmToggle = FarmingManagerSection:Toggle({
     end
 });
 FM_Add("Zone Farming", FarmToggle);
-local DgnDrop = FarmingManagerSection:Dropdown({
+local DgnDrop = FarmTab:Dropdown({
     Title = "Select Dungeon",
     Multi = true,
     AllowNone = true,
@@ -1621,7 +1617,7 @@ task.spawn(function()
         task.wait(1);
     end;
 end);
-local RaidDrop = FarmingManagerSection:Dropdown({
+local RaidDrop = FarmTab:Dropdown({
     Title = "Select Raid",
     Multi = true,
     AllowNone = true,
@@ -1636,7 +1632,7 @@ local RaidDrop = FarmingManagerSection:Dropdown({
     end
 });
 FM_Add("Gamemodes", RaidDrop);
-local DefenseDrop = FarmingManagerSection:Dropdown({
+local DefenseDrop = FarmTab:Dropdown({
     Title = "Select Defense",
     Multi = true,
     AllowNone = true,
@@ -1728,7 +1724,7 @@ task.spawn(function()
     end
 end)
 
-local ModeToggle = FarmingManagerSection:Toggle({
+local ModeToggle = FarmTab:Toggle({
     Title = "Auto Join & Kill",
     Flag = "AutoDungeon_Cfg",
     Callback = function(val)
@@ -1766,7 +1762,7 @@ local function UpdateAccDropdown(dropdown, val, defaultTitle)
 end
 
 local AccInMode
-AccInMode = FarmingManagerSection:Dropdown({
+AccInMode = FarmTab:Dropdown({
     Title = "Select Battle Gear",
     Desc = "None Selected",
     Multi = false,
@@ -1787,7 +1783,7 @@ if Config.AccessoryInMode then
 end
 
 local AccOutMode
-AccOutMode = FarmingManagerSection:Dropdown({
+AccOutMode = FarmTab:Dropdown({
     Title = "Select Lobby Gear",
     Desc = "None Selected",
     Multi = false,
@@ -1807,7 +1803,7 @@ if Config.AccessoryOutMode then
     UpdateAccDropdown(AccOutMode, Config.AccessoryOutMode, "Select Lobby Gear")
 end
 
-local RefreshAccBtn = FarmingManagerSection:Button({
+local RefreshAccBtn = FarmTab:Button({
     Title = "Refresh Accessories",
     Icon = "refresh-cw",
     Callback = function()
@@ -1821,7 +1817,7 @@ local RefreshAccBtn = FarmingManagerSection:Button({
 })
 FM_Add("Accessories", RefreshAccBtn)
 
-local AccToggle = FarmingManagerSection:Toggle({
+local AccToggle = FarmTab:Toggle({
     Title = "Auto Equip Accessories",
     Flag = "AutoEquipAcc_Cfg",
     Callback = function(val)
@@ -2841,7 +2837,7 @@ end);
 local AllSections = {
     CommunitySection,
     MainSection,
-    FarmingManagerSection,
+    FarmTab,
     YenMainSection,
     ConfigSection,
     SecuritySection
