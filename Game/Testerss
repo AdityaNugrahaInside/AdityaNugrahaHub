@@ -747,7 +747,7 @@ local BaseProfile = {
 	Banner = "rbxassetid://124762019485618", Avatar = "rbxassetid://84366761557806", Status = true,
 	Badges = {
 		{
-			Icon = "geist:logo-discord", Desc = "Join ANHUB Discord",
+			Icon = "geist:logo-discord", Title = "Discord", Desc = "Join ANHUB Discord",
 			Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
 		},
 		{
@@ -1504,15 +1504,16 @@ task.spawn(function()
         DiscordInfo:SetDesc("Failed to fetch info.");
     end;
 end);
-local MainSection = Window:Section({
-    Title = "Main Features",
-    Icon = "sword",
-    Opened = true
-});
 
-local FarmTab = MainSection:Tab({
-    Title = "Farming",
-    Icon = "swords"
+local FarmTab = Window:Tab({
+    Title = "Main Feature",
+    Icon = "swords",
+		Profile = MakeProfile({
+			Title = "Main Feature",
+			Desc = "Anime Weapons"
+		}),
+		
+		SidebarProfile = false -- Mode Tab Biasa
 });
 
 local FM_Categories = {}
