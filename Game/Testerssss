@@ -1528,15 +1528,15 @@ local FarmTab = Window:Tab({
 
 local FM_Categories = {}
 local FM_CategoryDescriptions = {
-    ["Zone Farming"] = "Auto farm musuh per zona dan target spesifik",
-    ["Gamemodes"] = "Auto join & kill Dungeon/Raid/Defense dengan batas wave",
-    ["Accessories"] = "Pilih & auto equip aksesori untuk battle/lobby",
-    ["Exchange"] = "Tukar material, preview token dan kalkulasi jumlah",
-    ["Crate Roll"] = "Auto roll berbagai gacha dan pantau stok bahan",
-    ["Upgrade: Yen"] = "Upgrade buff Yen beserta biaya dan efek",
-    ["Upgrade: Token"] = "Upgrade buff Token dengan shard",
-    ["Upgrade: Rank"] = "Progres rank, syarat dan bonus",
-    ["Upgrade: Trainer"] = "Pengaturan dan peningkatan trainer"
+    ["Zone Farming"] = "Auto farm enemies per zone and specific targets",
+    ["Gamemodes"] = "Auto join & kill Dungeon/Raid/Defense",
+    ["Accessories"] = "Select & auto equip accessories for battle/lobby",
+    ["Exchange"] = "Exchange materials, preview tokens and calculate amounts",
+    ["Crate Roll"] = "Auto roll various gachas and monitor material stock",
+    ["Upgrade: Yen"] = "Upgrade Yen buff along with cost and effects",
+    ["Upgrade: Token"] = "Upgrade Token buff with shards",
+    ["Upgrade: Rank"] = "Rank progress, requirements, and bonuses",
+    ["Upgrade: Trainer"] = "Trainer settings and enhancement"
 }
 local function FM_GetElementFrame(elem)
     local f = rawget(elem, "ElementFrame") or (elem.UIElements and elem.UIElements.Main) or rawget(elem, "GroupFrame")
