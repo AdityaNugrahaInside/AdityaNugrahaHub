@@ -1,0 +1,466 @@
+repeat
+    task.wait();
+until game:IsLoaded();
+
+-- [LOADING SCREEN]
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/loading.lua"))()
+
+-- [CONFIG PATHS]
+local FolderPath = "ANUI/AnimeWeapons";
+local ExpiryFile = FolderPath .. "/ANHub_Key_Timer.txt";
+
+if not isfolder("ANUI") then makefolder("ANUI") end
+if not isfolder(FolderPath) then makefolder(FolderPath) end
+
+-- [SECURE WIPE / KEY SYSTEM LOGIC]
+local function SecureWipe()
+    if not isfile or (not delfile) or (not readfile) or (not listfiles) then
+        return;
+    end;
+    local currentTime = os.time();
+    local isExpired = false;
+
+    if isfile(ExpiryFile) then
+        local savedTime = tonumber(readfile(ExpiryFile)) or 0;
+        if currentTime > savedTime then
+            isExpired = true;
+        end;
+    elseif isfolder(FolderPath) then
+        isExpired = true;
+    end;
+
+    if isExpired then
+        if isfile(ExpiryFile) then
+            delfile(ExpiryFile);
+        end;
+        -- Cleanup key files if expired
+        local UserId = tostring(game:GetService("Players").LocalPlayer.UserId);
+        if isfolder(FolderPath) then
+            for _, file in pairs(listfiles(FolderPath)) do
+                if string.find(file, ".key") or string.find(file, UserId) then
+                    pcall(function()
+                        delfile(file);
+                    end);
+                end;
+            end;
+        end;
+        task.wait(0.5);
+    end;
+end;
+SecureWipe();
+
+-- [SERVICES & LOCALS]
+local Players = game:GetService("Players");
+local LocalPlayer = Players.LocalPlayer;
+local HttpService = game:GetService("HttpService");
+
+-- [HELPER FUNCTIONS]
+local function GetOnlineKeys()
+    local keys = { "Keynya", "FreeKey" };
+    local url = "https://raw.githubusercontent.com/AdityaNugrahaInside/ANHub/refs/heads/main/Key";
+    local success, response = pcall(function()
+        return game:HttpGet(url);
+    end);
+    if success then
+        keys = {};
+        for line in response:gmatch("[^\r\n]+") do
+            local cleanKey = string.gsub(line, "^%s*(.-)%s*$", "%1");
+            if cleanKey ~= "" then
+                table.insert(keys, cleanKey);
+            end;
+        end;
+    end;
+    return keys;
+end;
+
+-- [UI LIBRARY INIT]
+local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/main.lua?v="..math.random()))();
+
+local Window = l:CreateWindow({
+    Title = "AN Hub - Anime Advanced",
+    Icon = "rbxassetid://84366761557806",
+    Author = "Aditya Nugraha",
+    Folder = "AnimeWeapons",
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true,
+    Theme = "Dark",
+    Resizable = true,
+    SideBarWidth = 220,
+    HideSearchBar = true,
+    ToggleKey = Enum.KeyCode.RightControl,
+    KeySystem = {
+        Enabled = true,
+        Title = "ANHub Access",
+        Description = "Key expires every 24 Hours!",
+        Key = GetOnlineKeys(),
+        URL = "https://discord.gg/cy6uMRmeZ",
+        Note = "Join Discord for Key",
+        SaveKey = true
+    }
+});
+
+-- [UI ANIMATIONS]
+task.delay(1.0, function()
+    Window:CollapseSidebar()
+end)
+
+task.delay(3.0, function()
+    Window:ExpandSidebar()
+end)
+
+local function Notify(title, content, icon)
+    if l then l:Notify({ Title = title, Content = content, Icon = icon, Duration = 3 }) end
+end
+
+-- [PROFILES]
+local BaseProfile = {
+    Banner = "rbxassetid://124762019485618", Avatar = "rbxassetid://84366761557806", Status = true,
+    Badges = {
+        {
+            Icon = "geist:logo-discord", Title = "Discord", Desc = "Join ANHUB Discord",
+            Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
+        },
+        {
+            Icon = "youtube", Desc = "Subscribe to YouTube",
+            Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Channel link copied!", "youtube") end
+        }
+    }
+}
+
+local function MakeProfile(data)
+    local p = table.clone(BaseProfile)
+    for k, v in pairs(data or {}) do p[k] = v end
+    return p
+end
+
+Window:Tab({
+    Profile = MakeProfile({ Title = "ANHub Script", Desc = "Anime Advanced",
+    Badges = {
+        {
+            Icon = "geist:logo-discord", Desc = "Join ANHUB Discord",
+            Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
+        },
+        {
+            Icon = "youtube", Desc = "Subscribe to YouTube",
+            Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Channel link copied!", "youtube") end
+        }
+    } }),
+    SidebarProfile = true
+})
+
+do
+    Window:Tag({
+        Title = "v" .. ANUI.Version,
+        Icon = "github",
+        Color = Color3.fromHex("#ff0000")
+    });
+end;
+
+if not isfile(ExpiryFile) then
+    writefile(ExpiryFile, tostring(os.time() + 86400));
+end;
+
+-- [TAB: INFO]
+local InfoTab = Window:Tab({
+    Title = "Info",
+    Icon = "info"
+});
+local s, tUrl = pcall(function()
+    return Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150);
+end);
+local PlayerParagraph = InfoTab:Paragraph({
+    Title = LocalPlayer.DisplayName,
+    Desc = "User ID: " .. tostring(LocalPlayer.UserId) .. "\nKey Valid: Verifying...",
+    Image = s and tUrl or "rbxassetid://84366761557806",
+    ImageSize = 48,
+    Buttons = {
+        {
+            Title = "Copy HWID",
+            Icon = "copy",
+            Callback = function()
+                setclipboard(tostring(gethwid and gethwid() or LocalPlayer.UserId));
+            end
+        }
+    }
+});
+task.spawn(function()
+    while not Window.Destroyed do
+        local success, result = pcall(function()
+            if isfile(ExpiryFile) then
+                return tonumber(readfile(ExpiryFile)) or 0;
+            end;
+            return 0;
+        end);
+        local statusText = "Checking...";
+        if success and result > 0 then
+            local diff = result - os.time();
+            if diff > 0 then
+                local h = math.floor(diff / 3600);
+                local m = math.floor(diff % 3600 / 60);
+                statusText = string.format("%02dh %02dm", h, m);
+            else
+                statusText = "EXPIRED";
+            end;
+        else
+            statusText = "No Timer";
+        end;
+        if PlayerParagraph and PlayerParagraph.SetDesc then
+            pcall(function()
+                PlayerParagraph:SetDesc("User ID: " .. tostring(LocalPlayer.UserId) .. "\nKey Valid: " .. statusText);
+            end);
+        end;
+        task.wait(1);
+    end;
+end);
+local CommunitySection = InfoTab:Section({
+    Title = "Community",
+    Icon = "users",
+    Opened = true
+});
+local DiscordInfo = InfoTab:Paragraph({
+    Title = "Loading...",
+    Desc = "...",
+    Image = "rbxassetid://84366761557806",
+    ImageSize = 42,
+    Buttons = {
+        {
+            Title = "Copy Discord",
+            Icon = "copy",
+            Callback = function()
+                setclipboard("https://discord.gg/cy6uMRmeZ");
+            end
+        }
+    }
+});
+task.spawn(function()
+    local API = "https://discord.com/api/v10/invites/cy6uMRmeZ?with_counts=true&with_expiration=true";
+    local s, r = pcall(function()
+        return HttpService:JSONDecode((l.Creator.Request({
+            Url = API,
+            Method = "GET"
+        })).Body);
+    end);
+    if s and r and r.guild then
+        DiscordInfo:SetTitle(r.guild.name);
+        DiscordInfo:SetDesc("Members: " .. r.approximate_member_count .. "\nOnline: " .. r.approximate_presence_count);
+    else
+        DiscordInfo:SetTitle("Discord Error");
+        DiscordInfo:SetDesc("Failed to fetch info.");
+    end;
+end);
+
+-- [TAB: MAIN FEATURE (MISC)]
+local MainTab = Window:Tab({
+    Title = "Main Feature",
+    Icon = "layers", -- Changed Icon to generic layers
+    Profile = MakeProfile({
+        Title = "Main Feature",
+        Desc = "Anime Advanced"
+    }),
+    SidebarProfile = false
+});
+
+local FM_Categories = {}
+local FM_CategoryDescriptions = {
+    ["Misc"] = "Miscellaneous Features"
+}
+
+local function FM_GetElementFrame(elem)
+    local f = rawget(elem, "ElementFrame") or (elem.UIElements and elem.UIElements.Main) or rawget(elem, "GroupFrame")
+    return f
+end
+local function FM_Add(cat, elem)
+    if not FM_Categories[cat] then FM_Categories[cat] = {} end
+    table.insert(FM_Categories[cat], elem)
+    local frame = FM_GetElementFrame(elem)
+    if frame then frame.Visible = false end
+    return elem
+end
+local function FM_UpdateTabProfile(selected)
+    local desc = FM_CategoryDescriptions[selected] or ""
+    local containers = {}
+    if MainTab and MainTab.UIElements then
+        table.insert(containers, MainTab.UIElements.ContainerFrameCanvas)
+        table.insert(containers, MainTab.UIElements.ContainerFrame)
+    end
+    for _, cf in ipairs(containers) do
+        if cf then
+            local header = cf:FindFirstChild("ProfileHeader")
+            if header then
+                local tc = header:FindFirstChild("TextContainer")
+                if tc then
+                    for _, child in ipairs(tc:GetChildren()) do
+                        if child:IsA("TextLabel") then
+                            if child.LayoutOrder == 1 then child.Text = selected end
+                            if child.LayoutOrder == 2 then child.Text = desc end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+local function FM_OnChange(selected)
+    for name, elems in pairs(FM_Categories) do
+        local vis = (name == selected)
+        for _, e in ipairs(elems) do
+            local f = FM_GetElementFrame(e)
+            if f then f.Visible = vis end
+        end
+    end
+    pcall(function()
+        FM_UpdateTabProfile(selected)
+    end)
+end
+
+local FM_Category = MainTab:Category({
+    Title = "Select Category",
+    Default = "Misc",
+    Options = {
+        {Title="Misc", Icon="more-horizontal"}
+    },
+    Callback = FM_OnChange
+})
+
+-- [STICKY CATEGORY LOGIC]
+if FM_Category and FM_Category.ElementFrame and MainTab.UIElements.ContainerFrameCanvas then
+    local CategoryFrame = FM_Category.ElementFrame
+    local Canvas = MainTab.UIElements.ContainerFrameCanvas
+    local ScrollFrame = MainTab.UIElements.ContainerFrame
+    
+    CategoryFrame.Parent = Canvas
+    local startY = ScrollFrame.Position.Y.Offset
+    CategoryFrame.Position = UDim2.new(0, 0, 0, startY)
+    
+    local catHeight = CategoryFrame.Size.Y.Offset
+    local newY = startY + catHeight
+    
+    ScrollFrame.Position = UDim2.new(0, 0, 0, newY)
+    ScrollFrame.Size = UDim2.new(1, 0, 1, -newY)
+end
+
+MainTab:Space({Columns=1})
+
+-- [MISC CATEGORY CONTENT]
+local MiscInfo = MainTab:Paragraph({
+    Title = "Misc Features",
+    Desc = "This section is currently empty."
+})
+FM_Add("Misc", MiscInfo)
+
+FM_OnChange("Misc")
+
+-- [TAB: SETTINGS]
+local SettingsTab = Window:Tab({
+    Title = "Settings",
+    Icon = "settings-2"
+});
+local ConfigSection = SettingsTab:Section({
+    Title = "Config Manager",
+    Icon = "save",
+    Opened = true
+});
+local ConfigName = "ANConfig";
+SettingsTab:Input({
+    Title = "Config Name",
+    Placeholder = "ANConfig",
+    Flag = "ConfigName_Input",
+    Callback = function(txt)
+        ConfigName = txt;
+    end
+});
+SettingsTab:Button({
+    Title = "Save Config",
+    Icon = "save",
+    Callback = function()
+        (Window.ConfigManager:CreateConfig(ConfigName)):Save();
+        Window:Notify({
+            Title = "Success",
+            Content = "Saved!",
+            Icon = "check"
+        });
+    end
+});
+SettingsTab:Button({
+    Title = "Load Config",
+    Icon = "upload",
+    Callback = function()
+        local cfg = Window.ConfigManager:GetConfig(ConfigName);
+        if cfg then
+            cfg:Load();
+            Window:Notify({
+                Title = "Success",
+                Content = "Loaded!",
+                Icon = "check"
+            });
+        end;
+    end
+});
+SettingsTab:Button({
+    Title = "Delete Config",
+    Icon = "trash",
+    Callback = function()
+        Window.ConfigManager:DeleteConfig(ConfigName);
+        Window:Notify({
+            Title = "Success",
+            Content = "Deleted!",
+            Icon = "trash"
+        });
+    end
+});
+SettingsTab:Paragraph({
+    Title = "Game Auto Reconnect",
+    Desc = "Status: FROZEN by ANHub\nBypass is running automatically."
+});
+
+-- [CONFIG RESTORE]
+task.spawn(function()
+    task.wait(1.5);
+    local DefaultConfig = "ANConfig";
+    local CM = Window.ConfigManager;
+
+    if not isfolder((FolderPath .. "/config")) then
+        makefolder(FolderPath .. "/config");
+    end;
+    pcall(function()
+        if isfile(FolderPath .. "/config/" .. DefaultConfig .. ".json") then
+            local cfg = CM:GetConfig(DefaultConfig) or CM:CreateConfig(DefaultConfig);
+            cfg:Load();
+            l:Notify({
+                Title = "Config",
+                Content = "Restored ANConfig",
+                Icon = "check",
+                Duration = 2
+            });
+        else
+            CM:CreateConfig(DefaultConfig);
+        end;
+    end);
+    while not Window.Destroyed do
+        task.wait(10);
+        pcall(function()
+            local cfg = Window.ConfigManager:GetConfig(DefaultConfig);
+            if cfg then
+                cfg:Save();
+            else
+                (CM:CreateConfig(DefaultConfig)):Save();
+            end;
+        end);
+    end;
+end);
+
+-- [OPEN SECTIONS]
+local AllSections = {
+    CommunitySection,
+    MainTab,
+    ConfigSection
+};
+for _, sec in pairs(AllSections) do
+    task.spawn(function()
+        task.wait(0.1);
+        if sec.Opened then
+            sec:Open();
+        end;
+    end);
+end;
+Window:SelectTab(MainTab.Index);
