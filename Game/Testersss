@@ -1549,12 +1549,30 @@ local function FM_Add(cat, elem)
     if frame then frame.Visible = false end
     return elem
 end
-local FarmProfileParagraph = FarmTab:Paragraph({
-    Title = "Zone Farming",
-    Desc = FM_CategoryDescriptions["Zone Farming"] or "",
-    Image = "rbxassetid://84366761557806",
-    ImageSize = 42
-})
+local function FM_UpdateTabProfile(selected)
+    local desc = FM_CategoryDescriptions[selected] or ""
+    local containers = {}
+    if FarmTab and FarmTab.UIElements then
+        table.insert(containers, FarmTab.UIElements.ContainerFrameCanvas)
+        table.insert(containers, FarmTab.UIElements.ContainerFrame)
+    end
+    for _, cf in ipairs(containers) do
+        if cf then
+            local header = cf:FindFirstChild("ProfileHeader")
+            if header then
+                local tc = header:FindFirstChild("TextContainer")
+                if tc then
+                    for _, child in ipairs(tc:GetChildren()) do
+                        if child:IsA("TextLabel") then
+                            if child.LayoutOrder == 1 then child.Text = selected end
+                            if child.LayoutOrder == 2 then child.Text = desc end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
 local function FM_OnChange(selected)
     for name, elems in pairs(FM_Categories) do
         local vis = (name == selected)
@@ -1563,12 +1581,9 @@ local function FM_OnChange(selected)
             if f then f.Visible = vis end
         end
     end
-    if FarmProfileParagraph and FarmProfileParagraph.SetTitle then
-        pcall(function()
-            FarmProfileParagraph:SetTitle(selected)
-            FarmProfileParagraph:SetDesc(FM_CategoryDescriptions[selected] or "")
-        end)
-    end
+    pcall(function()
+        FM_UpdateTabProfile(selected)
+    end)
 end
 local FM_Category = FarmTab:Category({
     Title = "Select Category",
