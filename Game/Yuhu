@@ -1624,12 +1624,6 @@ local function LogicGamemodes()
                 lastTeleportedUid = nil;
                 hasTeleportedToBossInRaid = false;
                 if LastZone and LastZone ~= "" and not string.find(LastZone, "Dungeon:") and not string.find(LastZone, "Raid:") and not string.find(LastZone, "Defense:") and LastZone ~= "Unknown" then
-                    l:Notify({
-                        Title = "Mode Finished",
-                        Content = "In Lobby -> Returning to " .. LastZone,
-                        Icon = "map-pin",
-                        Duration = 3
-                    });
                     if Reliable then
                         pcall(function()
                             Reliable:FireServer("Zone Teleport", {
@@ -1695,12 +1689,6 @@ local function LogicGamemodes()
                     if not string.find(currentMap, "Dungeon") and (not string.find(currentMap, "Raid:")) and (not string.find(currentMap, "Defense:")) then
                         LastZone = currentMap;
                     end;
-                    l:Notify({
-                        Title = "Auto Mode",
-                        Content = "Joining " .. targetName,
-                        Icon = "swords",
-                        Duration = 2
-                    });
                     if Reliable then
                         pcall(function()
                             Reliable:FireServer("Join Gamemode", {
