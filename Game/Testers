@@ -1242,6 +1242,30 @@ local FM_Category = FarmTab:Category({
     },
     Callback = FM_OnChange
 })
+
+-- [MODIFIKASI STICKY CATEGORY]
+if FM_Category and FM_Category.ElementFrame and FarmTab.UIElements.ContainerFrameCanvas then
+    local CategoryFrame = FM_Category.ElementFrame
+    local Canvas = FarmTab.UIElements.ContainerFrameCanvas
+    local ScrollFrame = FarmTab.UIElements.ContainerFrame
+    
+    -- Pindahkan ke Canvas agar tidak ikut scroll
+    CategoryFrame.Parent = Canvas
+    
+    -- Ambil posisi Y awal dari ScrollFrame (biasanya tinggi Profile)
+    local startY = ScrollFrame.Position.Y.Offset
+    
+    -- Posisikan Category di bawah Profile
+    CategoryFrame.Position = UDim2.new(0, 0, 0, startY)
+    
+    -- Geser ScrollFrame ke bawah seukuran Category
+    local catHeight = CategoryFrame.Size.Y.Offset
+    local newY = startY + catHeight
+    
+    ScrollFrame.Position = UDim2.new(0, 0, 0, newY)
+    ScrollFrame.Size = UDim2.new(1, 0, 1, -newY)
+end
+
 FarmTab:Space({Columns=1})
 
 -- [MODIFIKASI: DROPDOWN UNTUK ENEMIES DENGAN IMAGES]
