@@ -438,6 +438,24 @@ local function GetDynamicRankIcon()
     end);
     return iconId;
 end;
+local function GetIcon(id)
+    return "rbxassetid://" .. tostring(id)
+end
+local function GetYenIcon()
+    local icon = "rbxassetid://84366761557806"
+    pcall(function()
+        icon = (game:GetService("Players")).LocalPlayer.PlayerGui.Screen.Hud.left.yen.icon.Image;
+    end)
+    return icon
+end
+local function GetTrainerIcon()
+    local icon = "rbxassetid://10723415903"
+    pcall(function()
+        icon = (game:GetService("Players")).LocalPlayer.PlayerGui.Screen.Hud.left.buttons.Arsenal.button.icon.Image;
+    end)
+    return icon
+end
+-- moved earlier
 local function GetRollIconAsset(rollType)
     local fallback = "rbxassetid://84366761557806";
     local assetId = "";
@@ -724,7 +742,7 @@ local function Notify(title, content, icon)
 end
 
 local BaseProfile = {
-	Banner = "rbxassetid://114772391775993", Avatar = "rbxassetid://84366761557806", Status = true,
+	Banner = "rbxassetid://124762019485618", Avatar = "rbxassetid://84366761557806", Status = true,
 	Badges = {
 		{
 			Icon = "geist:logo-discord", Desc = "Join ANHUB Discord",
@@ -1523,12 +1541,12 @@ local FM_Category = FarmTab:Category({
         {Title="Zone Farming", Icon="swords"},
         {Title="Gamemodes", Icon="activity"},
         {Title="Accessories", Icon="package"},
-        {Title="Exchange", Icon="swap"},
+        {Title="Exchange", Icon=GetIcon(TradeTokenInfo.Template)},
         {Title="Crate Roll", Icon="package"},
-        {Title="Upgrade: Yen", Icon="coins"},
-        {Title="Upgrade: Token", Icon="layers"},
-        {Title="Upgrade: Rank", Icon="shield"},
-        {Title="Upgrade: Trainer", Icon="sword"}
+        {Title="Upgrade: Yen", Icon=GetYenIcon()},
+        {Title="Upgrade: Token", Icon="rbxassetid://124644932563791"},
+        {Title="Upgrade: Rank", Icon=GetDynamicRankIcon()},
+        {Title="Upgrade: Trainer", Icon=GetTrainerIcon()}
     },
     Callback = FM_OnChange
 })
@@ -1860,9 +1878,7 @@ local PrevMaterialsDigest = nil
 local ExchangeAmount = 1
 local ExchangeIsBuying = false
 
-local function GetIcon(id)
-    return "rbxassetid://"..tostring(id)
-end
+-- moved earlier
 
 local function GetMaterialsDigest()
     local pData = (getgenv()).PlayerData
@@ -2131,20 +2147,7 @@ local function GetStatsIcon()
     return icon;
 end;
 local YenMainSection = FarmTab
-local function GetYenIcon()
-    local icon = "rbxassetid://84366761557806";
-    pcall(function()
-        icon = (game:GetService("Players")).LocalPlayer.PlayerGui.Screen.Hud.left.yen.icon.Image;
-    end);
-    return icon;
-end;
-local function GetTrainerIcon()
-    local icon = "rbxassetid://10723415903";
-    pcall(function()
-        icon = (game:GetService("Players")).LocalPlayer.PlayerGui.Screen.Hud.left.buttons.Arsenal.button.icon.Image;
-    end);
-    return icon;
-end;
+-- moved earlier
 local upgradeOrder = {"Luck", "Damage", "Yen", "Mastery", "Critical"}
 
 -- Using FarmTab categories; no sub-tab buttons needed
