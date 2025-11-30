@@ -716,7 +716,7 @@ local Window = l:CreateWindow({
     Acrylic = true,
     Theme = "Dark",
     Resizable = true,
-    SideBarWidth = 170,
+    SideBarWidth = 220,
     HideSearchBar = true,
     ToggleKey = Enum.KeyCode.RightControl,
     KeySystem = {
@@ -2797,7 +2797,6 @@ task.spawn(function()
 end);
 local AllSections = {
     CommunitySection,
-    MainSection,
     FarmTab,
     ConfigSection,
     SecuritySection
