@@ -672,42 +672,42 @@ task.spawn(function()
 end)
 
 local function Notify(title, content, icon)
-	if l then l:Notify({ Title = title, Content = content, Icon = icon, Duration = 3 }) end
+    if l then l:Notify({ Title = title, Content = content, Icon = icon, Duration = 3 }) end
 end
 
 local BaseProfile = {
-	Banner = "rbxassetid://124762019485618", Avatar = "rbxassetid://84366761557806", Status = true,
-	Badges = {
-		{
-			Icon = "geist:logo-discord", Title = "Discord", Desc = "Join ANHUB Discord",
-			Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
-		},
-		{
-			Icon = "youtube", Desc = "Subscribe to YouTube",
-			Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Channel link copied!", "youtube") end
-		}
-	}
+    Banner = "rbxassetid://124762019485618", Avatar = "rbxassetid://84366761557806", Status = true,
+    Badges = {
+        {
+            Icon = "geist:logo-discord", Title = "Discord", Desc = "Join ANHUB Discord",
+            Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
+        },
+        {
+            Icon = "youtube", Desc = "Subscribe to YouTube",
+            Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Channel link copied!", "youtube") end
+        }
+    }
 }
 
 local function MakeProfile(data)
-	local p = table.clone(BaseProfile)
-	for k, v in pairs(data or {}) do p[k] = v end
-	return p
+    local p = table.clone(BaseProfile)
+    for k, v in pairs(data or {}) do p[k] = v end
+    return p
 end
 
 Window:Tab({
-	Profile = MakeProfile({ Title = "ANHub Script", Desc = "Anime Weapons",
+    Profile = MakeProfile({ Title = "ANHub Script", Desc = "Anime Weapons",
     Badges = {
-		{
-			Icon = "geist:logo-discord", Desc = "Join ANHUB Discord",
-			Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
-		},
-		{
-			Icon = "youtube", Desc = "Subscribe to YouTube",
-			Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Channel link copied!", "youtube") end
-		}
-	} }),
-	SidebarProfile = true
+        {
+            Icon = "geist:logo-discord", Desc = "Join ANHUB Discord",
+            Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
+        },
+        {
+            Icon = "youtube", Desc = "Subscribe to YouTube",
+            Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Channel link copied!", "youtube") end
+        }
+    } }),
+    SidebarProfile = true
 })
 
 do
@@ -1159,12 +1159,12 @@ end);
 local FarmTab = Window:Tab({
     Title = "Main Feature",
     Icon = "swords",
-		Profile = MakeProfile({
-			Title = "Main Feature",
-			Desc = "Anime Weapons"
-		}),
-		
-		SidebarProfile = false -- Mode Tab Biasa
+        Profile = MakeProfile({
+            Title = "Main Feature",
+            Desc = "Anime Weapons"
+        }),
+        
+        SidebarProfile = false -- Mode Tab Biasa
 });
 
 local FM_Categories = {}
@@ -1407,24 +1407,68 @@ FM_Add("Accessories", AccToggle)
 -- =========================================================================
 -- [GAMEMODES SECTION]
 -- =========================================================================
-local GamemodeData = {
-    Dungeons = {
-        {Name = "Easy", ID = 1, Time = 0},
-        {Name = "Medium", ID = 2, Time = 20},
-        {Name = "Hard", ID = 3, Time = 40}
-    },
-    Raids = {
-        {Name = "Shinobi", ID = 1, Time = 10}
-    },
-    Defense = {
-        {Name = "Easy", ID = 1, Time = 0}
-    }
+local LiveGamemodeData = {
+    Dungeon = {},
+    Raid = {},
+    Defense = {}
 }
+
+local function RefreshGamemodeData(modeType)
+    local list = {}
+    local moduleScript = ReplicatedStorage.Scripts.Configs.Gamemodes:FindFirstChild(modeType)
+    if moduleScript then
+        local success, data = pcall(require, moduleScript)
+        if success and data and data.PHASES then
+            for index, phaseData in ipairs(data.PHASES) do
+                local name = phaseData.Name
+                -- Normalize Schedule Times
+                local times = {}
+                if phaseData.START_TIMES then
+                    times = phaseData.START_TIMES
+                elseif phaseData.START_MINUTE then
+                    table.insert(times, phaseData.START_MINUTE)
+                end
+                
+                -- Format Time Display
+                local timeStr = "Mins: " .. table.concat(times, ", ")
+                
+                -- Process Reward Images
+                local rewardImages = {}
+                if phaseData.ChanceReward then
+                    for rewardKey, _ in pairs(phaseData.ChanceReward) do
+                        local img = GetRewardAssetId(rewardKey)
+                        if img then table.insert(rewardImages, img) end
+                    end
+                end
+                table.sort(rewardImages)
+                
+                -- Store for Logic (using normalized structure)
+                if not LiveGamemodeData[modeType] then LiveGamemodeData[modeType] = {} end
+                table.insert(LiveGamemodeData[modeType], {
+                    ID = index,
+                    Name = name,
+                    Times = times
+                })
+                
+                -- Add to UI List
+                table.insert(list, {
+                    Title = name,
+                    Value = name, -- Using Name as Key for Dropdown
+                    Desc = string.format("HP: %s\n%s", FormatNumber(phaseData.HealthBase or 0), timeStr),
+                    Images = rewardImages
+                })
+            end
+        end
+    end
+    return list
+end
 
 local GDungeons = FM_Add("GameModes", FarmTab:Dropdown({
     Title = "Dungeons",
     Multi = true,
-    Values = {"Easy", "Medium", "Hard"},
+    Values = RefreshGamemodeData("Dungeon"),
+    ImageSize = UDim2.fromOffset(20, 20),
+    ImagePadding = 6,
     Flag = "TargetDungeons_Cfg",
     Callback = function(val)
         Config.TargetDungeons = val
@@ -1434,7 +1478,9 @@ local GDungeons = FM_Add("GameModes", FarmTab:Dropdown({
 local GRaids = FM_Add("GameModes", FarmTab:Dropdown({
     Title = "Raids",
     Multi = true,
-    Values = {"Shinobi"},
+    Values = RefreshGamemodeData("Raid"),
+    ImageSize = UDim2.fromOffset(20, 20),
+    ImagePadding = 6,
     Flag = "TargetRaids_Cfg",
     Callback = function(val)
         Config.TargetRaids = val
@@ -1444,7 +1490,9 @@ local GRaids = FM_Add("GameModes", FarmTab:Dropdown({
 local GDefenses = FM_Add("GameModes", FarmTab:Dropdown({
     Title = "Defense",
     Multi = true,
-    Values = {"Easy"},
+    Values = RefreshGamemodeData("Defense"),
+    ImageSize = UDim2.fromOffset(20, 20),
+    ImagePadding = 6,
     Flag = "TargetDefenses_Cfg",
     Callback = function(val)
         Config.TargetDefenses = val
@@ -1587,53 +1635,34 @@ local function LogicGamemode()
             local currentTime = os.date("*t")
             local joined = false
             
-            -- Cek Dungeon
-            if Config.TargetDungeons then
-                for name, state in pairs(Config.TargetDungeons) do
+            -- Helper to check times
+            local function checkAndJoin(configTable, liveData, remotePrefix)
+                if not configTable then return false end
+                for name, state in pairs(configTable) do
                     if state then
-                        for _, dData in ipairs(GamemodeData.Dungeons) do
-                            if dData.Name == name and dData.Time == currentTime.min then
-                                if Reliable then
-                                    Reliable:FireServer("Join Gamemode", {"Dungeon:" .. dData.ID})
-                                    joined = true
+                        for _, modeData in ipairs(liveData) do
+                            if modeData.Name == name then
+                                for _, t in ipairs(modeData.Times) do
+                                    if t == currentTime.min then
+                                        if Reliable then
+                                            Reliable:FireServer("Join Gamemode", {remotePrefix .. ":" .. modeData.ID})
+                                            return true
+                                        end
+                                    end
                                 end
                             end
                         end
                     end
                 end
+                return false
             end
             
-            -- Cek Raid
-            if not joined and Config.TargetRaids then
-                for name, state in pairs(Config.TargetRaids) do
-                    if state then
-                         for _, rData in ipairs(GamemodeData.Raids) do
-                             if rData.Name == name and (rData.Time == currentTime.min or rData.Time + 30 == currentTime.min) then
-                                 if Reliable then
-                                     Reliable:FireServer("Join Gamemode", {"Raid:" .. rData.ID})
-                                     joined = true
-                                 end
-                             end
-                         end
-                    end
-                end
-            end
-            
+            -- Cek Dungeon
+            if checkAndJoin(Config.TargetDungeons, LiveGamemodeData.Dungeon, "Dungeon") then joined = true end
+            -- Cek Raid (Offset time + 30 is handled in some scripts, here we trust the config)
+            if not joined and checkAndJoin(Config.TargetRaids, LiveGamemodeData.Raid, "Raid") then joined = true end
             -- Cek Defense
-            if not joined and Config.TargetDefenses then
-                 for name, state in pairs(Config.TargetDefenses) do
-                     if state then
-                         for _, dData in ipairs(GamemodeData.Defense) do
-                             if dData.Name == name and (dData.Time == currentTime.min or dData.Time + 30 == currentTime.min) then
-                                 if Reliable then
-                                     Reliable:FireServer("Join Gamemode", {"Defense:" .. dData.ID})
-                                     joined = true
-                                 end
-                             end
-                         end
-                     end
-                 end
-            end
+            if not joined and checkAndJoin(Config.TargetDefenses, LiveGamemodeData.Defense, "Defense") then joined = true end
             
             task.wait(1)
         end
