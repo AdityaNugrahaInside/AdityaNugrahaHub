@@ -68,7 +68,6 @@ if not isfolder(FolderPath) then makefolder(FolderPath) end
 
 local Config = {
     AutoFarm = false,
-    AutoDungeon = false,
     AutoFuse = false,
     AutoRankUp = false,
     AutoYen_Luck = false,
@@ -96,19 +95,10 @@ local Config = {
     AutoEquipAccessories = false,
     AccessoryInMode = nil,
     AccessoryOutMode = nil,
-    AutoJoinRaid = false,
-    AutoJoinDungeon = false,
-    AutoJoinDefense = false,
-    TargetWaveDungeon = 500,
-    TargetWaveRaid = 500,
-    TargetWaveDef = 500,
     SelectedEnemy = nil,
     ZoneConfigurations = {},
-    TargetDungeon = {},
-    TargetRaid = {},
-    TargetDefense = {}
+    
 };
-local dontTeleport = false
 local hrp, humanoid;
 local LastZone = nil;
 local CurrentZoneName = "";
@@ -120,7 +110,6 @@ local RollConfigs = {};
 local LastEnemyScanTime = 0;
 local LastEnemyChildCount = 0;
 local AllRollTypes = {};
-local HasJoinedGamemode = false;
 local function DiscoverRollTypes()
     local set = {};
     local cfgRoot = ReplicatedStorage:FindFirstChild("Scripts") and ReplicatedStorage.Scripts:FindFirstChild("Configs");
@@ -485,77 +474,6 @@ local function GetRollIconAsset(rollType)
     end;
     return fallback;
 end;
-local dungeonList, dungeonDB, raidList, raidDB = {}, {}, {}, {};
-local defenseList, defenseDB = {}, {};
-local function LoadDungeonData()
-    local success, module = pcall(function()
-        return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Dungeon);
-    end);
-    if success and module and module.PHASES then
-        dungeonList, dungeonDB = {}, {};
-        for id, phase in ipairs(module.PHASES) do
-            local dName = phase.Name;
-            local hpCalc = math.floor((phase.HealthBase or 0) / 50);
-            local desc = "Hp Base: " .. FormatNumber(hpCalc);
-            table.insert(dungeonList, {
-                Title = dName,
-                Desc = desc,
-                Value = dName
-            });
-            dungeonDB[dName] = {
-                ID = id,
-                Time = phase.START_MINUTE,
-                BaseDesc = desc
-            };
-        end;
-    end;
-end;
-local function LoadRaidData()
-    local success, module = pcall(function()
-        return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Raid);
-    end);
-    if success and module and module.PHASES then
-        raidList, raidDB = {}, {};
-        for id, phase in ipairs(module.PHASES) do
-            local rName = phase.Name;
-            local hpCalc = math.floor((phase.HealthBase or 0) / 50);
-            local desc = "Hp Base: " .. FormatNumber(hpCalc);
-            table.insert(raidList, {
-                Title = rName,
-                Desc = desc,
-                Value = rName
-            });
-            raidDB[rName] = {
-                ID = id,
-                Times = phase.START_TIMES,
-                BaseDesc = desc
-            };
-        end;
-    end;
-end;
-local function LoadDefenseData()
-    local success, module = pcall(function()
-        return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Defense);
-    end);
-    if success and module and module.PHASES then
-        defenseList, defenseDB = {}, {};
-        for id, phase in ipairs(module.PHASES) do
-            local rName = phase.Name;
-            local hpCalc = math.floor((phase.HealthBase or 0) / 50);
-            local desc = "Hp Base: " .. FormatNumber(hpCalc);
-            table.insert(defenseList, {
-                Title = rName,
-                Desc = desc,
-                Value = rName
-            });
-            defenseDB[rName] = {
-                ID = id,
-                Times = phase.START_TIMES,
-                BaseDesc = desc
-            };
-        end;
-    end;
-end;
 local function LoadRollData(rollType)
     local success, module = pcall(function()
         return require(ReplicatedStorage.Scripts.Configs.RollGachas[rollType]);
@@ -583,9 +501,6 @@ local function LoadRollData(rollType)
         end;
     end;
 end;
-LoadDungeonData();
-LoadRaidData();
-LoadDefenseData();
 for _, rollType in ipairs(AllRollTypes) do
     LoadRollData(rollType);
 end;
@@ -803,7 +718,6 @@ end;
 
 Window:OnDestroy(function()
     Config.AutoFarm = false;
-    Config.AutoDungeon = false;
     Config.AutoFuse = false;
     Config.AutoRankUp = false;
     Config.AutoRollBiju = false;
@@ -986,7 +900,7 @@ local function LogicAutoFarm()
 end
 local function MaintainAutoStatus()
     while not Window.Destroyed do
-        if Config.AutoFarm or Config.AutoDungeon then
+        if Config.AutoFarm or Config.AutoEquipAccessories then
             local Data = (getgenv()).PlayerData;
             if Data and Data.Settings and Reliable then
                 if Data.Settings.AutoClick == false then
@@ -1066,101 +980,6 @@ task.spawn(function()
     end
 end);
 
--- [MODIFICATION: Yehe.lua Wave Detection Logic]
-local waveRaid = 0; local waveDungeon = 0; local waveDef = 0; local waveShadow = 0;
-local function SetupWaveDetection()
-    local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui", 10)
-    if not PlayerGui then return end
-    
-    local function safeConnect(pathTable, callback)
-        local obj = PlayerGui
-        for _, name in ipairs(pathTable) do
-             obj = obj:WaitForChild(name, 5)
-             if not obj then return end
-        end
-        
-        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-            pcall(function() callback(obj.Text) end) -- Initial check
-            obj:GetPropertyChangedSignal("Text"):Connect(function()
-                pcall(function() callback(obj.Text) end)
-            end)
-        end
-    end
-
-    task.spawn(function()
-        safeConnect({"Screen", "Hud", "gamemode", "Dungeon", "room", "amount"}, function(txt)
-            waveDungeon = tonumber((string.gsub(txt, "Room: ", ""))) or 0
-        end)
-    end)
-    task.spawn(function()
-        safeConnect({"Screen", "Hud", "gamemode", "Raid", "wave", "amount"}, function(txt)
-            local val = tonumber((string.gsub(txt, "Room: ", "")))
-            if not val then val = tonumber((string.gsub(txt, "Wave: ", ""))) end
-            waveRaid = val or 0
-        end)
-    end)
-    task.spawn(function()
-        safeConnect({"Screen", "Hud", "gamemode", "Defense", "wave", "amount"}, function(txt)
-            local val = tonumber((string.gsub(txt, "Room: ", "")))
-            if not val then val = tonumber((string.gsub(txt, "Wave: ", ""))) end
-            waveDef = val or 0
-        end)
-    end)
-    task.spawn(function()
-        safeConnect({"Screen", "Hud", "gamemode", "ShadowGate", "wave", "amount"}, function(txt)
-            local val = tonumber((string.gsub(txt, "Room: ", "")))
-            if not val then val = tonumber((string.gsub(txt, "Wave: ", ""))) end
-            waveShadow = val or 0
-        end)
-    end)
-end
-task.spawn(SetupWaveDetection)
-
-local function IsInGamemode()
-    if Workspace:FindFirstChild("Dungeon") then return true end
-    if Workspace:FindFirstChild("Raid") then return true end
-    if Workspace:FindFirstChild("Defense") then return true end
-    return false
-end
-
-local function IsInLobbyZone()
-    if Workspace:FindFirstChild("Zones") and Workspace.Zones:FindFirstChild("Dungeon") then
-        if isPlayerInZone(Workspace.Zones.Dungeon) then
-            return true
-        end
-    end
-    return false
-end
-
-task.spawn(function()
-    while not Window.Destroyed do
-        local zones = Workspace:FindFirstChild("Zones")
-        if not zones or dontTeleport then
-            task.wait(6)
-            continue
-        end
-        local target = LastZone
-        if not target or target == "" or target == "Unknown" then
-            task.wait(6)
-            continue
-        end
-        local targetZone = zones:FindFirstChild(target)
-        local inTarget = false
-        if targetZone and isPlayerInZone(targetZone) then
-            inTarget = true
-        end
-        if inTarget or IsInGamemode() or IsInLobbyZone() or (not HasJoinedGamemode) then
-            task.wait(6)
-            continue
-        end
-        if Reliable then
-            pcall(function()
-                Reliable:FireServer("Zone Teleport", { target })
-            end)
-        end
-        task.wait(6)
-    end
-end)
 
 local function GetPartPosition(obj)
     if typeof(obj) == "Instance" then
@@ -1187,196 +1006,8 @@ local function GetEnemiesFolder()
     end
     return Workspace:FindFirstChild("Enemies")
 end
-local function TeleportBackToLastZone()
-    if LastZone and LastZone ~= "" and LastZone ~= "Unknown" then
-        if Reliable then
-            pcall(function()
-                Reliable:FireServer("Zone Teleport", { LastZone })
-            end)
-        end
-    end
-    HasJoinedGamemode = false
-    dontTeleport = false
-end
-local function LogicGamemodes()
-    local wasInGamemode = false;
-    local currentTargetObj = nil;
-    local refreshTimer = 0;
-    local lastTeleportedUid = nil;
-    local hasTeleportedToBossInRaid = false;
-    local LastAccessoryState = "None"
-
-    while Config.AutoDungeon or Config.AutoEquipAccessories do
-        if Window.Destroyed then
-            break;
-        end;
-        local currentMap = GetCurrentMapStatus();
-        local inLobbyZone = false;
-        if Workspace:FindFirstChild("Zones") and Workspace.Zones:FindFirstChild("Dungeon") then
-            if isPlayerInZone(Workspace.Zones.Dungeon) then
-                inLobbyZone = true;
-            end;
-        end;
-        local EnemiesFolder = GetEnemiesFolder()
-        local hasEnemies = EnemiesFolder and #EnemiesFolder:GetChildren() > 0
-        local isFightingZone = string.find(currentMap, ":") and (string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense"));
-        if currentMap == "Raid" then
-            isFightingZone = true
-        elseif currentMap == "Defense" then
-            isFightingZone = hasEnemies
-        end
-
-        -- [LOGIC: AUTO EQUIP ACCESSORIES]
-        if Config.AutoEquipAccessories then
-            if isFightingZone then
-                -- Kita sedang di mode tempur
-                if LastAccessoryState ~= "InMode" and Config.AccessoryInMode then
-                    FireAccessory(Config.AccessoryInMode)
-                    LastAccessoryState = "InMode"
-                end
-            else
-                -- Kita di lobby
-                if LastAccessoryState ~= "OutMode" and Config.AccessoryOutMode then
-                    FireAccessory(Config.AccessoryOutMode)
-                    LastAccessoryState = "OutMode"
-                end
-            end
-        end
-
-        if not Config.AutoDungeon then
-            task.wait(1)
-            continue
-        end
-
-        if currentMap ~= "Unknown" then
-            if isFightingZone then
-                wasInGamemode = true;
-                dontTeleport = true
-
-                local exceedWave = false
-                if string.find(currentMap, "Raid") and waveRaid > (Config.TargetWaveRaid or 500) then exceedWave = true end
-                if string.find(currentMap, "Defense") and waveDef > (Config.TargetWaveDef or 500) then exceedWave = true end
-                if string.find(currentMap, "Dungeon") and waveDungeon > (Config.TargetWaveDungeon or 500) then exceedWave = true end
-
-                if exceedWave then
-                    currentTargetObj = nil
-                    TeleportBackToLastZone()
-                    task.wait(2)
-                    continue
-                end
-
-                if os.time() - refreshTimer > 10 then
-                    RefreshEnemyData()
-                    refreshTimer = os.time()
-                end
-
-                local function KillMonster(mon)
-                    local head = mon:FindFirstChild("Head")
-                    if not head then return end
-                    local hrpToFeet = (hrp and hrp.Size.Y or 4) / 2
-                    local safeHeight = -2
-                    local headPos = GetPartPosition(head)
-                    if not headPos then return end
-                    local targetPosition = headPos + Vector3.new(5, hrpToFeet + safeHeight, 5)
-                    while Config.AutoDungeon and IsInGamemode() do
-                        if not hrp then break end
-                        if head.Transparency ~= 0 then break end
-                        if GetDistance(hrp, mon) > 1000 then break end
-                        hrp.CFrame = CFrame.new(targetPosition)
-                        task.wait(0.05)
-                    end
-                end
-
-                if hrp and EnemiesFolder then
-                    for _, mon in ipairs(EnemiesFolder:GetChildren()) do
-                        local head = mon:FindFirstChild("Head")
-                        if head and head.Transparency == 0 then
-                            KillMonster(mon)
-                            if Window.Destroyed or not Config.AutoDungeon then break end
-                        end
-                    end
-                end
-                task.wait(0.1)
-            elseif inLobbyZone or wasInGamemode and (not isFightingZone) then
-                currentTargetObj = nil;
-                lastTeleportedUid = nil;
-                hasTeleportedToBossInRaid = false;
-                dontTeleport = false
-                wasInGamemode = false;
-            else
-                local t = os.date("*t");
-                local currentMinute = t.min;
-                local targetString, targetName = nil, "";
-                for _, dName in pairs(Config.TargetDungeon) do
-                    local data = dungeonDB[dName];
-                    if data and currentMinute == data.Time then
-                        targetString = "Dungeon:" .. tostring(data.ID);
-                        targetName = dName;
-                        break;
-                    end;
-                end;
-                if not targetString then
-                    for _, rName in pairs(Config.TargetRaid) do
-                        local data = raidDB[rName];
-                        if data and data.Times then
-                            for _, timeVal in ipairs(data.Times) do
-                                if currentMinute == timeVal then
-                                    targetString = "Raid:" .. tostring(data.ID);
-                                    targetName = rName;
-                                    break;
-                                end;
-                            end;
-                        end;
-                        if targetString then
-                            break;
-                        end;
-                    end;
-                end;
-                if not targetString then
-                    for _, dName in pairs(Config.TargetDefense) do
-                        local data = defenseDB[dName];
-                        if data and data.Times then
-                            for _, timeVal in ipairs(data.Times) do
-                                if currentMinute == timeVal then
-                                    targetString = "Defense:" .. tostring(data.ID);
-                                    targetName = dName;
-                                    break;
-                                end;
-                            end;
-                        end;
-                        if targetString then
-                            break;
-                        end;
-                    end;
-                end;
-
-                if targetString then
-                    if not string.find(currentMap, "Dungeon:") and (not string.find(currentMap, "Raid:")) and (not string.find(currentMap, "Defense:")) then
-                        LastZone = currentMap;
-                    end;
-                    l:Notify({
-                        Title = "Auto Mode",
-                        Content = "Joining " .. targetName,
-                        Icon = "swords",
-                        Duration = 2
-                    });
-                    if Reliable then
-                        pcall(function()
-                            Reliable:FireServer("Join Gamemode", {
-                                targetString
-                            });
-                        end);
-                    end;
-                    HasJoinedGamemode = true
-                    task.wait(5);
-                end;
-                task.wait(1);
-            end;
-        else
-            task.wait(1);
-        end;
-    end;
-end;
+ 
+ 
 task.spawn(function()
     while not Window.Destroyed do
         local anyRollActive = false;
@@ -1532,7 +1163,6 @@ local FarmTab = Window:Tab({
 local FM_Categories = {}
 local FM_CategoryDescriptions = {
     ["Zone Farming"] = "Auto farm enemies per zone and specific targets",
-    ["Gamemodes"] = "Auto join & kill Dungeon/Raid/Defense",
     ["Accessories"] = "Select & auto equip accessories for battle/lobby",
     ["Exchange"] = "Exchange materials, preview tokens and calculate amounts",
     ["Crate Roll"] = "Auto roll various gachas and monitor material stock",
@@ -1593,7 +1223,6 @@ local FM_Category = FarmTab:Category({
     Default = "Zone Farming",
     Options = {
         {Title="Zone Farming", Icon="swords"},
-        {Title="Gamemodes", Icon="activity"},
         {Title="Accessories", Icon="package"},
         {Title="Exchange", Icon=GetIcon(TradeTokenInfo.Template)},
         {Title="Crate Roll", Icon="package"},
@@ -1641,86 +1270,6 @@ local FarmToggle = FarmTab:Toggle({
     end
 });
 FM_Add("Zone Farming", FarmToggle);
--- [GAMEMODES: ADAPTASI YEHE - TOGGLES]
-local function JoinGamemode(mode)
-    if Reliable then
-        pcall(function()
-            Reliable:FireServer("Join Gamemode", { mode })
-        end)
-    end
-end
-local AutoJoinRaid = FarmTab:Toggle({
-    Title = "Auto Join Raid",
-    Flag = "AutoJoinRaid_Cfg",
-    Callback = function(val)
-        Config.AutoJoinRaid = val
-        if val then
-            task.spawn(function()
-                while Config.AutoJoinRaid and not Window.Destroyed do
-                    local m = GetCurrentMapStatus()
-                    if not string.find(m, "Raid") then
-                        JoinGamemode("Raid")
-                        task.wait(5)
-                    else
-                        task.wait(1)
-                    end
-                end
-            end)
-        end
-    end
-})
-FM_Add("Gamemodes", AutoJoinRaid)
-local AutoJoinDungeon = FarmTab:Toggle({
-    Title = "Auto Join Dungeon",
-    Flag = "AutoJoinDungeon_Cfg",
-    Callback = function(val)
-        Config.AutoJoinDungeon = val
-        if val then
-            task.spawn(function()
-                while Config.AutoJoinDungeon and not Window.Destroyed do
-                    local m = GetCurrentMapStatus()
-                    if not string.find(m, "Dungeon") then
-                        JoinGamemode("Dungeon")
-                        task.wait(5)
-                    else
-                        task.wait(1)
-                    end
-                end
-            end)
-        end
-    end
-})
-FM_Add("Gamemodes", AutoJoinDungeon)
-local AutoJoinDefense = FarmTab:Toggle({
-    Title = "Auto Join Defense",
-    Flag = "AutoJoinDefense_Cfg",
-    Callback = function(val)
-        Config.AutoJoinDefense = val
-        if val then
-            task.spawn(function()
-                while Config.AutoJoinDefense and not Window.Destroyed do
-                    local m = GetCurrentMapStatus()
-                    if not string.find(m, "Defense") then
-                        JoinGamemode("Defense")
-                        task.wait(5)
-                    else
-                        task.wait(1)
-                    end
-                end
-            end)
-        end
-    end
-})
-FM_Add("Gamemodes", AutoJoinDefense)
-local AutoKillToggle = FarmTab:Toggle({
-    Title = "Auto Kill (Dungeons/Raids)",
-    Flag = "AutoDungeon_Cfg",
-    Callback = function(val)
-        Config.AutoDungeon = val
-        if val then task.spawn(LogicGamemodes) end
-    end
-})
-FM_Add("Gamemodes", AutoKillToggle)
 
 -- [ACCESSORIES UI]
 local function UpdateAccDropdown(dropdown, val, defaultTitle)
@@ -1803,13 +1352,44 @@ local RefreshAccBtn = FarmTab:Button({
 })
 FM_Add("Accessories", RefreshAccBtn)
 
+local function LogicAccessories()
+    local LastAccessoryState = "None"
+    while Config.AutoEquipAccessories and not Window.Destroyed do
+        local currentMap = GetCurrentMapStatus()
+        local enemiesFolder = GetEnemiesFolder()
+        local hasEnemies = enemiesFolder and #enemiesFolder:GetChildren() > 0
+        local isFightingZone = false
+        if string.find(currentMap, ":") and (string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense")) then
+            isFightingZone = true
+        end
+        if currentMap == "Raid" then
+            isFightingZone = true
+        elseif currentMap == "Defense" then
+            isFightingZone = hasEnemies
+        end
+
+        if isFightingZone then
+            if LastAccessoryState ~= "InMode" and Config.AccessoryInMode then
+                FireAccessory(Config.AccessoryInMode)
+                LastAccessoryState = "InMode"
+            end
+        else
+            if LastAccessoryState ~= "OutMode" and Config.AccessoryOutMode then
+                FireAccessory(Config.AccessoryOutMode)
+                LastAccessoryState = "OutMode"
+            end
+        end
+        task.wait(0.5)
+    end
+end
+
 local AccToggle = FarmTab:Toggle({
     Title = "Auto Equip Accessories",
     Flag = "AutoEquipAcc_Cfg",
     Callback = function(val)
         Config.AutoEquipAccessories = val
         if val then
-            task.spawn(LogicGamemodes)
+            task.spawn(LogicAccessories)
         end;
     end
 })
