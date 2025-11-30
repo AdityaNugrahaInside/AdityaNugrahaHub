@@ -1,5 +1,5 @@
 local ANUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/main.lua?v="..math.random()))();
-local ANUI = require("./src/Init")
+-- local ANUI = require("./src/Init")
 
 local Window = ANUI:CreateWindow({
     Title = "WindUI Sidebar Demo",
