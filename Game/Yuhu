@@ -1242,6 +1242,30 @@ local FM_Category = FarmTab:Category({
     },
     Callback = FM_OnChange
 })
+
+-- [MODIFIKASI STICKY CATEGORY]
+if FM_Category and FM_Category.ElementFrame and FarmTab.UIElements.ContainerFrameCanvas then
+    local CategoryFrame = FM_Category.ElementFrame
+    local Canvas = FarmTab.UIElements.ContainerFrameCanvas
+    local ScrollFrame = FarmTab.UIElements.ContainerFrame
+    
+    -- Pindahkan ke Canvas agar tidak ikut scroll
+    CategoryFrame.Parent = Canvas
+    
+    -- Ambil posisi Y awal dari ScrollFrame (biasanya tinggi Profile)
+    local startY = ScrollFrame.Position.Y.Offset
+    
+    -- Posisikan Category di bawah Profile
+    CategoryFrame.Position = UDim2.new(0, 0, 0, startY)
+    
+    -- Geser ScrollFrame ke bawah seukuran Category
+    local catHeight = CategoryFrame.Size.Y.Offset
+    local newY = startY + catHeight
+    
+    ScrollFrame.Position = UDim2.new(0, 0, 0, newY)
+    ScrollFrame.Size = UDim2.new(1, 0, 1, -newY)
+end
+
 FarmTab:Space({Columns=1})
 
 -- [MODIFIKASI: DROPDOWN UNTUK ENEMIES DENGAN IMAGES]
@@ -1568,54 +1592,29 @@ local function LogicGamemodes()
                     end;
                 end;
 
-                local isRaid = string.find(currentMap, "Raid")
-                local isDefense = string.find(currentMap, "Defense")
-
+                -- [MODIFIED: UNIFIED COMBAT LOGIC (Dungeon/Raid/Defense)]
+                -- Logic now consistently finds closest enemy and teleports to it, removing Raid/Boss restrictions.
                 if not currentTargetObj and hrp then
                     local closest, minDst = nil, math.huge;
                     local myPos = hrp.Position;
-                    local bossFound = false
 
                     for _, enemyList in pairs(GlobalEnemyMap) do
                         for _, enemyObj in ipairs(enemyList) do
                             if enemyObj.Alive == true and enemyObj.Data and enemyObj.Data.CFrame then
                                 local dst = (myPos - enemyObj.Data.CFrame.Position).Magnitude;
-                                local config = rawget(enemyObj, "Config")
-                                local isBoss = config and config.Difficult == "Emperor"
-
-                                if isRaid and isBoss then
-                                    closest = enemyObj
-                                    bossFound = true
-                                    break
-                                end
-
                                 if dst < minDst then
                                     minDst = dst;
-                                    if not bossFound then
-                                        closest = enemyObj;
-                                    end
+                                    closest = enemyObj;
                                 end;
                             end;
                         end;
-                        if bossFound then break end
                     end;
 
                     if closest then
                         currentTargetObj = closest;
                         if currentTargetObj.Data and currentTargetObj.Data.CFrame then
-                            local config = rawget(currentTargetObj, "Config")
-                            local isBoss = config and config.Difficult == "Emperor"
-                            local targetUid = currentTargetObj.Uid
-
-                            if isRaid then
-                                if isBoss and (not hasTeleportedToBossInRaid) then
-                                    hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
-                                    hasTeleportedToBossInRaid = true;
-                                end
-                            else
-                                hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
-                                lastTeleportedUid = targetUid
-                            end
+                            hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
+                            lastTeleportedUid = currentTargetObj.Uid
                         end;
                     end;
                 end;
