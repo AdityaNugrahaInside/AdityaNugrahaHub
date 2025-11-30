@@ -60,6 +60,8 @@ local HttpService = game:GetService("HttpService");
 local RunService = game:GetService("RunService");
 local Reliable = (ReplicatedStorage:WaitForChild("Reply")):WaitForChild("Reliable");
 local Unreliable = (ReplicatedStorage:WaitForChild("Reply")):WaitForChild("Unreliable");
+local MaterialsModule = require(ReplicatedStorage.Scripts.Configs.General.Materials)
+local TradeTokenInfo = MaterialsModule.TradeToken
 
 if not isfolder("ANUI") then makefolder("ANUI") end
 if not isfolder(FolderPath) then makefolder(FolderPath) end
@@ -1861,9 +1863,6 @@ local GeneralTab = MainSection:Tab({
 });
 
 local GeneralManagerSection = FarmTab
-
-local MaterialsModule = require(ReplicatedStorage.Scripts.Configs.General.Materials)
-local TradeTokenInfo = MaterialsModule.TradeToken
 local ExchangeList = {}
 for k, v in pairs(MaterialsModule) do
     if v.Exchangeable and k ~= "TradeToken" then
@@ -2134,11 +2133,6 @@ GeneralTab:Toggle({
     end
 });
 
-
-local YenTab = MainSection:Tab({
-    Title = "Upgrade",
-    Icon = "chevrons-up"
-});
 local function GetStatsIcon()
     local icon = "bar-chart";
     pcall(function()
