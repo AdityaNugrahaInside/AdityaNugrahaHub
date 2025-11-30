@@ -716,7 +716,7 @@ local Window = l:CreateWindow({
     Acrylic = true,
     Theme = "Dark",
     Resizable = true,
-    SideBarWidth = 170,
+    SideBarWidth = 220,
     HideSearchBar = true,
     ToggleKey = Enum.KeyCode.RightControl,
     KeySystem = {
@@ -729,6 +729,14 @@ local Window = l:CreateWindow({
         SaveKey = true
     }
 });
+
+task.delay(1.0, function()
+    Window:CollapseSidebar()
+end)
+
+task.delay(3.0, function()
+    Window:ExpandSidebar()
+end)
 task.spawn(function()
     task.wait(1)
     while Window and not Window.Destroyed do
