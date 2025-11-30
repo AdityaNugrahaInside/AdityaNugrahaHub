@@ -1522,7 +1522,9 @@ local FM_Category = FarmTab:Category({
     Options = {
         {Title="Zone Farming", Icon="swords"},
         {Title="Gamemodes", Icon="activity"},
-        {Title="Accessories", Icon="package"}
+        {Title="Accessories", Icon="package"},
+        {Title="Exchange", Icon="swap"},
+        {Title="Crate Roll", Icon="package"}
     },
     Callback = FM_OnChange
 })
@@ -1836,16 +1838,7 @@ local GeneralTab = MainSection:Tab({
     Icon = "settings"
 });
 
-local GeneralManagerSection = GeneralTab:Section({
-    Title = "General Manager",
-    Icon = "settings-2",
-    Opened = true
-})
-
-local GeneralTabs = CreateTabButtons(GeneralManagerSection, {
-    "Exchange",
-    "Crate Roll"
-})
+local GeneralManagerSection = FarmTab
 
 local MaterialsModule = require(ReplicatedStorage.Scripts.Configs.General.Materials)
 local TradeTokenInfo = MaterialsModule.TradeToken
@@ -1897,7 +1890,7 @@ local function BuildExchangeValues()
 end
 
 local PreviewGroup = GeneralManagerSection:Group()
-GeneralTabs:Add("Exchange", PreviewGroup)
+FM_Add("Exchange", PreviewGroup)
 
 local MatPreview = PreviewGroup:Dropdown({
     Title = "Select Token",
@@ -1939,7 +1932,7 @@ local ExSlider = GeneralManagerSection:Slider({
         ExchangePercent = v / 100
     end
 })
-GeneralTabs:Add("Exchange", ExSlider)
+FM_Add("Exchange", ExSlider)
 
 local ExSwap = GeneralManagerSection:Toggle({
     Title = "Swap Direction (Buy Mode)",
@@ -1948,7 +1941,7 @@ local ExSwap = GeneralManagerSection:Toggle({
         ExchangeIsBuying = v
     end
 })
-GeneralTabs:Add("Exchange", ExSwap)
+FM_Add("Exchange", ExSwap)
 
 local ExchangeButton = GeneralManagerSection:Button({
     Title = "Exchange",
@@ -1976,7 +1969,7 @@ local ExchangeButton = GeneralManagerSection:Button({
         end
     end
 })
-GeneralTabs:Add("Exchange", ExchangeButton)
+FM_Add("Exchange", ExchangeButton)
 
 task.spawn(function()
     while not Window.Destroyed do
@@ -2035,7 +2028,7 @@ local _rollCount = 0;
 for _, rollType in ipairs(AllRollTypes) do
     if _rollCount % 2 == 0 then
         _rollGroup = GeneralManagerSection:Group({});
-        GeneralTabs:Add("Crate Roll", _rollGroup)
+        FM_Add("Crate Roll", _rollGroup)
     end;
     local tokenKey = (RollConfigs[rollType] and RollConfigs[rollType].MaterialKey) or (rollType .. "Token");
     local displayName = (MaterialsModule[tokenKey] and MaterialsModule[tokenKey].Display) or rollType;
