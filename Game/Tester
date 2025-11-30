@@ -1620,7 +1620,7 @@ local function LogicGamemodes()
                     end;
                 end;
                 task.wait(0.1);
-            elseif inLobbyZone or wasInGamemode and (not isFightingZone) then
+            elseif inLobbyZone and wasInGamemode and (not isFightingZone) then
                 currentTargetObj = nil;
                 lastTeleportedUid = nil;
                 hasTeleportedToBossInRaid = false;
