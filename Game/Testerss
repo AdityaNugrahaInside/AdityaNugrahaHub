@@ -772,7 +772,7 @@ local function MakeProfile(data)
 end
 
 Window:Tab({
-	Profile = MakeProfile({ Title = "ANHub Script", Desc = "Anime Eternal",
+	Profile = MakeProfile({ Title = "ANHub Script", Desc = "Anime Weapons",
     Badges = {
 		{
 			Icon = "geist:logo-discord", Desc = "Join ANHUB Discord",
@@ -1159,6 +1159,42 @@ task.spawn(function()
     end
 end)
 
+local function GetPartPosition(obj)
+    if typeof(obj) == "Instance" then
+        if obj:IsA("Model") then
+            return obj:GetPivot().Position
+        elseif obj:IsA("BasePart") then
+            return obj.Position
+        end
+    end
+    return nil
+end
+local function GetDistance(a, b)
+    local pa = GetPartPosition(a)
+    local pb = GetPartPosition(b)
+    if pa and pb then
+        return (pa - pb).Magnitude
+    end
+    return math.huge
+end
+local function GetEnemiesFolder()
+    local client = workspace:FindFirstChild("Client")
+    if client and client:FindFirstChild("Enemies") then
+        return client.Enemies
+    end
+    return Workspace:FindFirstChild("Enemies")
+end
+local function TeleportBackToLastZone()
+    if LastZone and LastZone ~= "" and LastZone ~= "Unknown" then
+        if Reliable then
+            pcall(function()
+                Reliable:FireServer("Zone Teleport", { LastZone })
+            end)
+        end
+    end
+    HasJoinedGamemode = false
+    dontTeleport = false
+end
 local function LogicGamemodes()
     local wasInGamemode = false;
     local currentTargetObj = nil;
@@ -1178,7 +1214,7 @@ local function LogicGamemodes()
                 inLobbyZone = true;
             end;
         end;
-        local EnemiesFolder = Workspace:FindFirstChild("Enemies")
+        local EnemiesFolder = GetEnemiesFolder()
         local hasEnemies = EnemiesFolder and #EnemiesFolder:GetChildren() > 0
         local isFightingZone = string.find(currentMap, ":") and (string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense"));
         if currentMap == "Raid" then
@@ -1219,79 +1255,45 @@ local function LogicGamemodes()
                 if string.find(currentMap, "Defense") and waveDef > (Config.TargetWaveDef or 500) then exceedWave = true end
                 if string.find(currentMap, "Dungeon") and waveDungeon > (Config.TargetWaveDungeon or 500) then exceedWave = true end
 
-                if exceedWave and LastZone and LastZone ~= "" and LastZone ~= "Unknown" then
-                    if Reliable then
-                        pcall(function()
-                            Reliable:FireServer("Zone Teleport", { LastZone });
-                        end)
-                    end
+                if exceedWave then
                     currentTargetObj = nil
+                    TeleportBackToLastZone()
                     task.wait(2)
                     continue
                 end
 
                 if os.time() - refreshTimer > 10 then
-                    RefreshEnemyData();
-                    refreshTimer = os.time();
-                end;
-                if currentTargetObj then
-                    if currentTargetObj.Alive == false or (not currentTargetObj.Data) then
-                        currentTargetObj = nil;
-                    end;
-                end;
+                    RefreshEnemyData()
+                    refreshTimer = os.time()
+                end
 
-                local isRaid = string.find(currentMap, "Raid")
-                local isDefense = string.find(currentMap, "Defense")
+                local function KillMonster(mon)
+                    local head = mon:FindFirstChild("Head")
+                    if not head then return end
+                    local hrpToFeet = (hrp and hrp.Size.Y or 4) / 2
+                    local safeHeight = -2
+                    local headPos = GetPartPosition(head)
+                    if not headPos then return end
+                    local targetPosition = headPos + Vector3.new(5, hrpToFeet + safeHeight, 5)
+                    while Config.AutoDungeon and IsInGamemode() do
+                        if not hrp then break end
+                        if head.Transparency ~= 0 then break end
+                        if GetDistance(hrp, mon) > 1000 then break end
+                        hrp.CFrame = CFrame.new(targetPosition)
+                        task.wait(0.05)
+                    end
+                end
 
-                if not currentTargetObj and hrp then
-                    local closest, minDst = nil, math.huge;
-                    local myPos = hrp.Position;
-                    local bossFound = false
-
-                    for _, enemyList in pairs(GlobalEnemyMap) do
-                        for _, enemyObj in ipairs(enemyList) do
-                            if enemyObj.Alive == true and enemyObj.Data and enemyObj.Data.CFrame then
-                                local dst = (myPos - enemyObj.Data.CFrame.Position).Magnitude;
-                                local config = rawget(enemyObj, "Config")
-                                local isBoss = config and config.Difficult == "Emperor"
-
-                                if isRaid and isBoss then
-                                    closest = enemyObj
-                                    bossFound = true
-                                    break
-                                end
-
-                                if dst < minDst then
-                                    minDst = dst;
-                                    if not bossFound then
-                                        closest = enemyObj;
-                                    end
-                                end;
-                            end;
-                        end;
-                        if bossFound then break end
-                    end;
-
-                    if closest then
-                        currentTargetObj = closest;
-                        if currentTargetObj.Data and currentTargetObj.Data.CFrame then
-                            local config = rawget(currentTargetObj, "Config")
-                            local isBoss = config and config.Difficult == "Emperor"
-                            local targetUid = currentTargetObj.Uid
-
-                            if isRaid then
-                                if isBoss and (not hasTeleportedToBossInRaid) then
-                                    hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
-                                    hasTeleportedToBossInRaid = true;
-                                end
-                            else
-                                hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
-                                lastTeleportedUid = targetUid
-                            end
-                        end;
-                    end;
-                end;
-                task.wait(0.1);
+                if hrp and EnemiesFolder then
+                    for _, mon in ipairs(EnemiesFolder:GetChildren()) do
+                        local head = mon:FindFirstChild("Head")
+                        if head and head.Transparency == 0 then
+                            KillMonster(mon)
+                            if Window.Destroyed or not Config.AutoDungeon then break end
+                        end
+                    end
+                end
+                task.wait(0.1)
             elseif inLobbyZone or wasInGamemode and (not isFightingZone) then
                 currentTargetObj = nil;
                 lastTeleportedUid = nil;
@@ -1525,6 +1527,17 @@ local FarmTab = Window:Tab({
 });
 
 local FM_Categories = {}
+local FM_CategoryDescriptions = {
+    ["Zone Farming"] = "Auto farm musuh per zona dan target spesifik",
+    ["Gamemodes"] = "Auto join & kill Dungeon/Raid/Defense dengan batas wave",
+    ["Accessories"] = "Pilih & auto equip aksesori untuk battle/lobby",
+    ["Exchange"] = "Tukar material, preview token dan kalkulasi jumlah",
+    ["Crate Roll"] = "Auto roll berbagai gacha dan pantau stok bahan",
+    ["Upgrade: Yen"] = "Upgrade buff Yen beserta biaya dan efek",
+    ["Upgrade: Token"] = "Upgrade buff Token dengan shard",
+    ["Upgrade: Rank"] = "Progres rank, syarat dan bonus",
+    ["Upgrade: Trainer"] = "Pengaturan dan peningkatan trainer"
+}
 local function FM_GetElementFrame(elem)
     local f = rawget(elem, "ElementFrame") or (elem.UIElements and elem.UIElements.Main) or rawget(elem, "GroupFrame")
     return f
@@ -1536,6 +1549,12 @@ local function FM_Add(cat, elem)
     if frame then frame.Visible = false end
     return elem
 end
+local FarmProfileParagraph = FarmTab:Paragraph({
+    Title = "Zone Farming",
+    Desc = FM_CategoryDescriptions["Zone Farming"] or "",
+    Image = "rbxassetid://84366761557806",
+    ImageSize = 42
+})
 local function FM_OnChange(selected)
     for name, elems in pairs(FM_Categories) do
         local vis = (name == selected)
@@ -1543,6 +1562,12 @@ local function FM_OnChange(selected)
             local f = FM_GetElementFrame(e)
             if f then f.Visible = vis end
         end
+    end
+    if FarmProfileParagraph and FarmProfileParagraph.SetTitle then
+        pcall(function()
+            FarmProfileParagraph:SetTitle(selected)
+            FarmProfileParagraph:SetDesc(FM_CategoryDescriptions[selected] or "")
+        end)
     end
 end
 local FM_Category = FarmTab:Category({
