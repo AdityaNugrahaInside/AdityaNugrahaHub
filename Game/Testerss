@@ -744,9 +744,10 @@ local function MakeProfile(data)
 end
 
 Window:Tab({
-	Profile = MakeProfile({ Title = "ANHub Script", Desc = "Anime Eternal",Badges = {
+	Profile = MakeProfile({ Title = "ANHub Script", Desc = "Anime Eternal",
+    Badges = {
 		{
-			Icon = "geist:logo-discord", Title = "Discord", Desc = "Join ANHUB Discord",
+			Icon = "geist:logo-discord", Desc = "Join ANHUB Discord",
 			Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
 		},
 		{
@@ -1498,11 +1499,38 @@ local FarmingManagerSection = FarmTab:Section({
     Icon = "activity",
     Opened = true
 });
-local FarmTabs = CreateTabButtons(FarmingManagerSection, {
-    "Zone Farming",
-    "Gamemodes",
-    "Accessories"
+local FM_Categories = {}
+local function FM_GetElementFrame(elem)
+    local f = rawget(elem, "ElementFrame") or (elem.UIElements and elem.UIElements.Main) or rawget(elem, "GroupFrame")
+    return f
+end
+local function FM_Add(cat, elem)
+    if not FM_Categories[cat] then FM_Categories[cat] = {} end
+    table.insert(FM_Categories[cat], elem)
+    local frame = FM_GetElementFrame(elem)
+    if frame then frame.Visible = false end
+    return elem
+end
+local function FM_OnChange(selected)
+    for name, elems in pairs(FM_Categories) do
+        local vis = (name == selected)
+        for _, e in ipairs(elems) do
+            local f = FM_GetElementFrame(e)
+            if f then f.Visible = vis end
+        end
+    end
+end
+local FM_Category = FarmingManagerSection:Category({
+    Title = "Select Category",
+    Default = "Zone Farming",
+    Options = {
+        {Title="Zone Farming", Icon="swords"},
+        {Title="Gamemodes", Icon="activity"},
+        {Title="Accessories", Icon="package"}
+    },
+    Callback = FM_OnChange
 })
+FarmingManagerSection:Space({Columns=1})
 
 -- [MODIFIKASI: DROPDOWN UNTUK ENEMIES DENGAN IMAGES]
 EnemyDropdown = FarmingManagerSection:Dropdown({
@@ -1519,7 +1547,7 @@ EnemyDropdown = FarmingManagerSection:Dropdown({
         SaveZoneConfig(CurrentZoneName, selectedItem);
     end
 });
-FarmTabs:Add("Zone Farming", EnemyDropdown);
+FM_Add("Zone Farming", EnemyDropdown);
 local RefreshBtn = FarmingManagerSection:Button({
     Title = "Refresh List",
     Icon = "refresh-cw",
@@ -1527,7 +1555,7 @@ local RefreshBtn = FarmingManagerSection:Button({
         EnemyDropdown:Refresh(RefreshEnemyData());
     end
 });
-FarmTabs:Add("Zone Farming", RefreshBtn);
+FM_Add("Zone Farming", RefreshBtn);
 local FarmToggle = FarmingManagerSection:Toggle({
     Title = "Auto Farm",
     Flag = "AutoFarm_Cfg",
@@ -1538,7 +1566,7 @@ local FarmToggle = FarmingManagerSection:Toggle({
         end;
     end
 });
-FarmTabs:Add("Zone Farming", FarmToggle);
+FM_Add("Zone Farming", FarmToggle);
 local DgnDrop = FarmingManagerSection:Dropdown({
     Title = "Select Dungeon",
     Multi = true,
@@ -1553,7 +1581,7 @@ local DgnDrop = FarmingManagerSection:Dropdown({
         Config.TargetDungeon = t;
     end
 });
-FarmTabs:Add("Gamemodes", DgnDrop);
+FM_Add("Gamemodes", DgnDrop);
 
 task.spawn(function()
     while not Window.Destroyed do
@@ -1607,7 +1635,7 @@ local RaidDrop = FarmingManagerSection:Dropdown({
         Config.TargetRaid = t;
     end
 });
-FarmTabs:Add("Gamemodes", RaidDrop);
+FM_Add("Gamemodes", RaidDrop);
 local DefenseDrop = FarmingManagerSection:Dropdown({
     Title = "Select Defense",
     Multi = true,
@@ -1622,7 +1650,7 @@ local DefenseDrop = FarmingManagerSection:Dropdown({
         Config.TargetDefense = t;
     end
 });
-FarmTabs:Add("Gamemodes", DefenseDrop);
+FM_Add("Gamemodes", DefenseDrop);
 
 task.spawn(function()
     local function GetNextTimeDiff(times, currentMin, currentSec)
@@ -1710,7 +1738,7 @@ local ModeToggle = FarmingManagerSection:Toggle({
         end;
     end
 });
-FarmTabs:Add("Gamemodes", ModeToggle);
+FM_Add("Gamemodes", ModeToggle);
 
 -- [ACCESSORIES UI]
 local function UpdateAccDropdown(dropdown, val, defaultTitle)
@@ -1752,7 +1780,7 @@ AccInMode = FarmingManagerSection:Dropdown({
         UpdateAccDropdown(AccInMode, v, "Select Battle Gear")
     end
 })
-FarmTabs:Add("Accessories", AccInMode)
+FM_Add("Accessories", AccInMode)
 
 if Config.AccessoryInMode then
     UpdateAccDropdown(AccInMode, Config.AccessoryInMode, "Select Battle Gear")
@@ -1773,7 +1801,7 @@ AccOutMode = FarmingManagerSection:Dropdown({
         UpdateAccDropdown(AccOutMode, v, "Select Lobby Gear")
     end
 })
-FarmTabs:Add("Accessories", AccOutMode)
+FM_Add("Accessories", AccOutMode)
 
 if Config.AccessoryOutMode then
     UpdateAccDropdown(AccOutMode, Config.AccessoryOutMode, "Select Lobby Gear")
@@ -1791,7 +1819,7 @@ local RefreshAccBtn = FarmingManagerSection:Button({
         if Config.AccessoryOutMode then UpdateAccDropdown(AccOutMode, Config.AccessoryOutMode, "Select Lobby Gear") end
     end
 })
-FarmTabs:Add("Accessories", RefreshAccBtn)
+FM_Add("Accessories", RefreshAccBtn)
 
 local AccToggle = FarmingManagerSection:Toggle({
     Title = "Auto Equip Accessories",
@@ -1803,7 +1831,9 @@ local AccToggle = FarmingManagerSection:Toggle({
         end;
     end
 })
-FarmTabs:Add("Accessories", AccToggle)
+FM_Add("Accessories", AccToggle)
+
+FM_OnChange("Zone Farming")
 
 local GeneralTab = MainSection:Tab({
     Title = "General",
@@ -2824,4 +2854,4 @@ for _, sec in pairs(AllSections) do
         end;
     end);
 end;
-Window:SelectTab(1);
+Window:SelectTab(2);
