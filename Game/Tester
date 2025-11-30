@@ -97,7 +97,13 @@ local Config = {
     AccessoryOutMode = nil,
     SelectedEnemy = nil,
     ZoneConfigurations = {},
-    
+    -- [GAMEMODES CONFIG]
+    AutoGamemode = false,
+    TargetDungeons = {},
+    TargetRaids = {},
+    TargetDefenses = {},
+    TargetWave = 500,
+    TeleportBackMap = "None"
 };
 local hrp, humanoid;
 local LastZone = nil;
@@ -658,7 +664,7 @@ end)
 task.spawn(function()
     task.wait(1)
     while Window and not Window.Destroyed do
-        if Config.AutoFarm or (Window and not Window.Closed) then
+        if Config.AutoFarm or Config.AutoGamemode or (Window and not Window.Closed) then
             pcall(UpdateLiveEnemies)
         end
         task.wait(1)
@@ -718,6 +724,7 @@ end;
 
 Window:OnDestroy(function()
     Config.AutoFarm = false;
+    Config.AutoGamemode = false;
     Config.AutoFuse = false;
     Config.AutoRankUp = false;
     Config.AutoRollBiju = false;
@@ -900,7 +907,7 @@ local function LogicAutoFarm()
 end
 local function MaintainAutoStatus()
     while not Window.Destroyed do
-        if Config.AutoFarm or Config.AutoEquipAccessories then
+        if Config.AutoFarm or Config.AutoEquipAccessories or Config.AutoGamemode then
             local Data = (getgenv()).PlayerData;
             if Data and Data.Settings and Reliable then
                 if Data.Settings.AutoClick == false then
@@ -1163,6 +1170,7 @@ local FarmTab = Window:Tab({
 local FM_Categories = {}
 local FM_CategoryDescriptions = {
     ["Zone Farming"] = "Auto farm enemies per zone and specific targets",
+    ["GameModes"] = "Auto Join & Farm Dungeons/Raids by Time",
     ["Accessories"] = "Select & auto equip accessories for battle/lobby",
     ["Exchange"] = "Exchange materials, preview tokens and calculate amounts",
     ["Crate Roll"] = "Auto roll various gachas and monitor material stock",
@@ -1223,6 +1231,7 @@ local FM_Category = FarmTab:Category({
     Default = "Zone Farming",
     Options = {
         {Title="Zone Farming", Icon="swords"},
+        {Title="GameModes", Icon="skull"},
         {Title="Accessories", Icon="package"},
         {Title="Exchange", Icon=GetIcon(TradeTokenInfo.Template)},
         {Title="Crate Roll", Icon="package"},
@@ -1394,6 +1403,256 @@ local AccToggle = FarmTab:Toggle({
     end
 })
 FM_Add("Accessories", AccToggle)
+
+-- =========================================================================
+-- [GAMEMODES SECTION]
+-- =========================================================================
+local GamemodeData = {
+    Dungeons = {
+        {Name = "Easy", ID = 1, Time = 0},
+        {Name = "Medium", ID = 2, Time = 20},
+        {Name = "Hard", ID = 3, Time = 40}
+    },
+    Raids = {
+        {Name = "Shinobi", ID = 1, Time = 10}
+    },
+    Defense = {
+        {Name = "Easy", ID = 1, Time = 0}
+    }
+}
+
+local GDungeons = FM_Add("GameModes", FarmTab:Dropdown({
+    Title = "Dungeons",
+    Multi = true,
+    Values = {"Easy", "Medium", "Hard"},
+    Flag = "TargetDungeons_Cfg",
+    Callback = function(val)
+        Config.TargetDungeons = val
+    end
+}))
+
+local GRaids = FM_Add("GameModes", FarmTab:Dropdown({
+    Title = "Raids",
+    Multi = true,
+    Values = {"Shinobi"},
+    Flag = "TargetRaids_Cfg",
+    Callback = function(val)
+        Config.TargetRaids = val
+    end
+}))
+
+local GDefenses = FM_Add("GameModes", FarmTab:Dropdown({
+    Title = "Defense",
+    Multi = true,
+    Values = {"Easy"},
+    Flag = "TargetDefenses_Cfg",
+    Callback = function(val)
+        Config.TargetDefenses = val
+    end
+}))
+
+local GWaveInput = FM_Add("GameModes", FarmTab:Input({
+    Title = "Target Wave (Leave After)",
+    Default = "500",
+    Numeric = true,
+    Flag = "TargetWave_Cfg",
+    Callback = function(val)
+        Config.TargetWave = tonumber(val) or 500
+    end
+}))
+
+local GTeleportBack = FM_Add("GameModes", FarmTab:Dropdown({
+    Title = "Teleport Back Map",
+    Values = {"None", "Naruto", "DragonBall", "OnePiece", "DemonSlayer", "Paradis", "SoloLevel"},
+    Default = "None",
+    Flag = "TeleportBack_Cfg",
+    Callback = function(val)
+        Config.TeleportBackMap = val
+    end
+}))
+
+local function GetGamemodeWave()
+    local hud = LocalPlayer.PlayerGui:FindFirstChild("Screen") and LocalPlayer.PlayerGui.Screen:FindFirstChild("Hud")
+    if not hud then return 0 end
+    
+    local wave = 0
+    local function parse(txt)
+        return tonumber(string.gsub(string.gsub(txt, "Room: ", ""), "Wave: ", "")) or 0
+    end
+
+    if hud:FindFirstChild("gamemode") then
+        local gm = hud.gamemode
+        if gm:FindFirstChild("Raid") and gm.Raid.Visible then
+            wave = parse(gm.Raid.wave.amount.Text)
+        elseif gm:FindFirstChild("Dungeon") and gm.Dungeon.Visible then
+            wave = parse(gm.Dungeon.room.amount.Text)
+        elseif gm:FindFirstChild("Defense") and gm.Defense.Visible then
+            wave = parse(gm.Defense.wave.amount.Text)
+        elseif gm:FindFirstChild("ShadowGate") and gm.ShadowGate.Visible then
+             wave = parse(gm.ShadowGate.wave.amount.Text)
+        end
+    end
+    return wave
+end
+
+local function KillDungeonTarget(monster)
+    if not monster or not monster.Parent then return end
+    local head = monster:FindFirstChild("Head")
+    if not head then return end
+    
+    -- Hitung Attack Range (Simpel dari Yehe)
+    local attackRangePart = Workspace:FindFirstChild("AttackRange")
+    local attackRange = 10
+    if attackRangePart and attackRangePart:FindFirstChild("Part") then
+        attackRange = attackRangePart.Part.Size.X / 2
+    end
+    
+    local hrpToFeet = (hrp.Size.Y / 2) + (humanoid.HipHeight or 2)
+    local safeHeight = -2
+    local headPos = GetPartPosition(head)
+    
+    -- Target Posisi: Belakang Musuh
+    local targetPosition = headPos + Vector3.new(0, hrpToFeet + safeHeight, -attackRange + 8)
+
+    while Config.AutoGamemode and monster and monster.Parent and head and head.Transparency == 0 do
+         if not hrp then task.wait(); break end
+         
+         -- Cek apakah player masih di dalam dungeon
+         local map = GetCurrentMapStatus()
+         if not (string.find(map, "Dungeon") or string.find(map, "Raid") or string.find(map, "Defense")) then
+             break
+         end
+         
+         if GetDistance(hrp, monster) > 10000 then break end -- Terlalu jauh
+
+         hrp.CFrame = CFrame.new(targetPosition)
+         
+         -- Update posisi jika musuh bergerak
+         local newHeadPos = GetPartPosition(head)
+         local newTargetPosition = newHeadPos + Vector3.new(0, hrpToFeet + safeHeight, -attackRange + 8)
+         
+         if (targetPosition - newHeadPos).Magnitude >= attackRange then
+             targetPosition = newTargetPosition
+         end
+         
+         task.wait()
+    end
+end
+
+local function LogicGamemode()
+    while Config.AutoGamemode do
+        if Window.Destroyed then break end
+        local currentMap = GetCurrentMapStatus()
+        local inGamemode = string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense")
+
+        -- [LOGIC: INSIDE GAMEMODE - KILL AURA]
+        if inGamemode then
+            local currentWave = GetGamemodeWave()
+            
+            -- Cek apakah sudah target wave
+            if currentWave > Config.TargetWave then
+                -- Teleport Back
+                 if Config.TeleportBackMap and Config.TeleportBackMap ~= "None" then
+                    if Reliable then
+                         Reliable:FireServer("Zone Teleport", {Config.TeleportBackMap})
+                    end
+                 end
+                 task.wait(2)
+            else
+                -- Kill Logic
+                local enemies = Workspace:FindFirstChild("Enemies")
+                if enemies then
+                    for _, monster in pairs(enemies:GetChildren()) do
+                        local head = monster:FindFirstChild("Head")
+                        if head and head.Transparency == 0 then
+                            local dist = GetDistance(hrp, monster)
+                            -- Filter Attack Range
+                             local attackRangePart = Workspace:FindFirstChild("AttackRange")
+                             local ar = 10
+                             if attackRangePart and attackRangePart:FindFirstChild("Part") then
+                                ar = attackRangePart.Part.Size.X / 2
+                             end
+                             
+                            if dist < 10000 and dist > ar then
+                                KillDungeonTarget(monster)
+                            end
+                        end
+                        if not Config.AutoGamemode then break end
+                    end
+                end
+            end
+        
+        -- [LOGIC: OUTSIDE GAMEMODE - JOIN SCHEDULER]
+        else
+            local currentTime = os.date("*t")
+            local joined = false
+            
+            -- Cek Dungeon
+            if Config.TargetDungeons then
+                for name, state in pairs(Config.TargetDungeons) do
+                    if state then
+                        for _, dData in ipairs(GamemodeData.Dungeons) do
+                            if dData.Name == name and dData.Time == currentTime.min then
+                                if Reliable then
+                                    Reliable:FireServer("Join Gamemode", {"Dungeon:" .. dData.ID})
+                                    joined = true
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            
+            -- Cek Raid
+            if not joined and Config.TargetRaids then
+                for name, state in pairs(Config.TargetRaids) do
+                    if state then
+                         for _, rData in ipairs(GamemodeData.Raids) do
+                             if rData.Name == name and (rData.Time == currentTime.min or rData.Time + 30 == currentTime.min) then
+                                 if Reliable then
+                                     Reliable:FireServer("Join Gamemode", {"Raid:" .. rData.ID})
+                                     joined = true
+                                 end
+                             end
+                         end
+                    end
+                end
+            end
+            
+            -- Cek Defense
+            if not joined and Config.TargetDefenses then
+                 for name, state in pairs(Config.TargetDefenses) do
+                     if state then
+                         for _, dData in ipairs(GamemodeData.Defense) do
+                             if dData.Name == name and (dData.Time == currentTime.min or dData.Time + 30 == currentTime.min) then
+                                 if Reliable then
+                                     Reliable:FireServer("Join Gamemode", {"Defense:" .. dData.ID})
+                                     joined = true
+                                 end
+                             end
+                         end
+                     end
+                 end
+            end
+            
+            task.wait(1)
+        end
+        task.wait(0.1)
+    end
+end
+
+local GToggle = FM_Add("GameModes", FarmTab:Toggle({
+    Title = "Auto Join & Farm Gamemodes",
+    Flag = "AutoGamemode_Cfg",
+    Callback = function(val)
+        Config.AutoGamemode = val
+        if val then
+            task.spawn(LogicGamemode)
+        end
+    end
+}))
+
+-- =========================================================================
 
 FM_OnChange("Zone Farming")
 
