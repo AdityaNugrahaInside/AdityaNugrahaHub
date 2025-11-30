@@ -5,14 +5,22 @@ until game:IsLoaded();
 -- [LOADING SCREEN DARI FILE 2]
 loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/loading.lua"))()
 
--- [FIX ERROR PATCH: TRANSITION UI]
+-- [FIX ERROR PATCH: TRANSITION UI - REVISED PATH]
 -- Fungsi ini memperbaiki error "main is not a valid member of ImageLabel Transition"
--- dengan menyuntikkan dummy object ke dalam aset game agar script game tidak crash.
+-- Path diperbarui ke: game:GetService("ReplicatedFirst").Assets.Interface.Screens.Transition
 task.spawn(function()
     pcall(function()
         task.wait(1) -- Beri waktu asset loading
-        if shared and shared.Assets and shared.Assets.Interface and shared.Assets.Interface.Screens then
-            local transitionUI = shared.Assets.Interface.Screens:FindFirstChild("Transition")
+        
+        local ReplicatedFirst = game:GetService("ReplicatedFirst")
+        
+        -- Cek path satu per satu untuk menghindari error jika folder belum load
+        if ReplicatedFirst:FindFirstChild("Assets") and 
+           ReplicatedFirst.Assets:FindFirstChild("Interface") and 
+           ReplicatedFirst.Assets.Interface:FindFirstChild("Screens") then
+            
+            local transitionUI = ReplicatedFirst.Assets.Interface.Screens:FindFirstChild("Transition")
+            
             if transitionUI then
                 -- Cek apakah folder 'main' ada, jika tidak, kita buatkan
                 local mainFrame = transitionUI:FindFirstChild("main")
@@ -24,7 +32,7 @@ task.spawn(function()
                     mainFrame.Size = UDim2.fromScale(1, 1)
                 end
                 
-                -- Daftar bagian yang dicari oleh script Transition.c (logo, circle, dll)
+                -- Daftar bagian yang dicari oleh script Transition.c
                 local requiredParts = {"logo", "circle", "biggerCircle", "bright", "brightCircle"}
                 for _, partName in ipairs(requiredParts) do
                     if not mainFrame:FindFirstChild(partName) then
@@ -32,10 +40,10 @@ task.spawn(function()
                         dummyPart.Name = partName
                         dummyPart.Parent = mainFrame
                         dummyPart.BackgroundTransparency = 1
-                        dummyPart.ImageTransparency = 1 -- Invisible agar tidak mengganggu visual
+                        dummyPart.ImageTransparency = 1 -- Invisible
                     end
                 end
-                -- print("ANHub: Game Transition UI Patched Successfully!")
+                -- print("ANHub: Game Transition UI Patched Successfully via ReplicatedFirst!")
             end
         end
     end)
@@ -130,12 +138,16 @@ local Config = {
     AutoEquipAccessories = false,
     AccessoryInMode = nil,
     AccessoryOutMode = nil,
+    TargetWaveDungeon = 500,
+    TargetWaveRaid = 500,
+    TargetWaveDef = 500,
     SelectedEnemy = nil,
     ZoneConfigurations = {},
     TargetDungeon = {},
     TargetRaid = {},
     TargetDefense = {}
 };
+local dontTeleport = false
 local hrp, humanoid;
 local LastZone = nil;
 local CurrentZoneName = "";
@@ -147,6 +159,7 @@ local RollConfigs = {};
 local LastEnemyScanTime = 0;
 local LastEnemyChildCount = 0;
 local AllRollTypes = {};
+local HasJoinedGamemode = false;
 local function DiscoverRollTypes()
     local set = {};
     local cfgRoot = ReplicatedStorage:FindFirstChild("Scripts") and ReplicatedStorage.Scripts:FindFirstChild("Configs");
@@ -324,6 +337,14 @@ pcall(function()
     end
 end)
 
+local EnemiesConfig = {}
+pcall(function()
+    local MZPath = ConfigsPath:FindFirstChild("MultipleZones") or ConfigsPath:FindFirstChild("Multiple Zones")
+    if MZPath and MZPath:FindFirstChild("Enemies") then
+        EnemiesConfig = require(MZPath.Enemies)
+    end
+end)
+
 local ChanceModules = {};
 local ChancePath = ReplicatedStorage.Scripts.Configs:FindFirstChild("ChanceUpgrades");
 if ChancePath then
@@ -376,42 +397,6 @@ end;
 local function FormatNumber(n)
     return UtilsModule.ToText(n);
 end;
-local RollMaterialMap = {
-    Biju = "BijuToken",
-    Race = "RaceToken",
-    Sayajin = "SayajinToken",
-    Fruits = "FruitsToken",
-    Haki = "HakiToken",
-    Breathing = "BreathingToken",
-    Organization = "OrganizationToken",
-    Titan = "TitanToken",
-    MagicEyes = "EyeToken",
-    DemonArt = "DemonToken"
-};
-local RollDisplayNames = {
-    Biju = "Biju Shard",
-    Race = "Race Shard",
-    Sayajin = "Sayajin Shard",
-    Fruits = "Fruits Shard",
-    Haki = "Haki Shard",
-    Breathing = "Breathing Stone",
-    Organization = "Organization Shard",
-    Titan = "Titan Shard",
-    MagicEyes = "Magic Eyes",
-    DemonArt = "Demon Art"
-};
-local RollTypeToConfig = {
-    Biju = "AutoRollBiju",
-    Race = "AutoRollRace",
-    Sayajin = "AutoRollSayajin",
-    Fruits = "AutoRollFruits",
-    Haki = "AutoRollHaki",
-    Breathing = "AutoRollBreathing",
-    Organization = "AutoRollOrganization",
-    Titan = "AutoRollTitan",
-    MagicEyes = "AutoRollMagicEyes",
-    DemonArt = "AutoRollDemonArt"
-};
 
 local function LoadZoneDB()
     if isfile(FolderPath .. "/" .. ZoneDBFile) then
@@ -693,65 +678,54 @@ end
 
 -- [MODIFIKASI BARU: UPDATE RefreshEnemyData]
 local function RefreshEnemyData()
-    local uiList = {};
-    local seenForUI = {};
-    GlobalEnemyMap = {};
-    local EnemiesFolder = Workspace:FindFirstChild("Enemies");
-    if not EnemiesFolder then
-        return uiList;
-    end;
-    local childCount = #EnemiesFolder:GetChildren();
-    if tick() - LastEnemyScanTime < 1.5 and childCount == LastEnemyChildCount then
-        return CurrentZoneEnemiesCache;
-    end;
-    LastEnemyScanTime = tick();
-    LastEnemyChildCount = childCount;
-    for _, v in pairs(getgc(true)) do
-        if type(v) == "table" then
-            local config = rawget(v, "Config");
-            local alive = rawget(v, "Alive");
-            local uid = rawget(v, "Uid");
-            local dataSection = rawget(v, "Data");
-            if config and alive == true and uid and dataSection and dataSection.CFrame then
-                local display = config.Display or "Unknown";
-                local realName = rawget(v, "Character") and v.Character.Name or display;
-                if not GlobalEnemyMap[realName] then
-                    GlobalEnemyMap[realName] = {};
-                end;
-                table.insert(GlobalEnemyMap[realName], v);
-                if not seenForUI[realName] then
-                    seenForUI[realName] = true;
-
-                    -- [BARU: Ambil Gambar dari ChanceReward]
+    local uiList = {}
+    if EnemiesConfig and CurrentZoneName and CurrentZoneName ~= "" and CurrentZoneName ~= "Unknown" then
+        local added = {}
+        for key, data in pairs(EnemiesConfig) do
+            if data.Zone == CurrentZoneName then
+                local displayName = data.Display or key
+                if not added[displayName] then
+                    added[displayName] = true
                     local rewardImages = {}
-                    if config.ChanceReward then
-                        for rewardKey, _ in pairs(config.ChanceReward) do
+                    if data.ChanceReward then
+                        for rewardKey, _ in pairs(data.ChanceReward) do
                             local img = GetRewardAssetId(rewardKey)
-                            if img then
-                                table.insert(rewardImages, img)
-                            end
+                            if img then table.insert(rewardImages, img) end
                         end
                     end
-                    -- Urutkan agar rapi (opsional)
                     table.sort(rewardImages)
-
                     table.insert(uiList, {
-                        Title = display .. " (" .. (config.Difficult or "Normal") .. ")",
-                        Value = realName,
-                        Desc = "HP: " .. FormatNumber((config.MaxHealth or 0)),
-                        HP = config.MaxHealth or 0,
-                        Images = rewardImages -- Field Images ditambahkan untuk Dropdown
-                    });
-                end;
-            end;
-        end;
-    end;
-    table.sort(uiList, function(a, b)
-        return a.HP < b.HP;
-    end);
-    CurrentZoneEnemiesCache = uiList;
-    return uiList;
-end;
+                        Title = displayName .. " (" .. (data.Difficult or "Normal") .. ")",
+                        Value = displayName,
+                        Desc = "HP: " .. FormatNumber((data.MaxHealth or 0)),
+                        HP = data.MaxHealth or 0,
+                        Images = rewardImages
+                    })
+                end
+            end
+        end
+    end
+    table.sort(uiList, function(a, b) return a.HP < b.HP end)
+    CurrentZoneEnemiesCache = uiList
+    return uiList
+end
+
+local function UpdateLiveEnemies()
+    local newMap = {}
+    for _, v in pairs(getgc(true)) do
+        if type(v) == "table" then
+            local rawConfig = rawget(v, "Config")
+            local alive = rawget(v, "Alive")
+            local data = rawget(v, "Data")
+            if rawConfig and alive == true and data and data.CFrame then
+                local keyName = rawConfig.Display or (v.Character and v.Character.Name) or "Unknown"
+                if not newMap[keyName] then newMap[keyName] = {} end
+                table.insert(newMap[keyName], v)
+            end
+        end
+    end
+    GlobalEnemyMap = newMap
+end
 
 
 
@@ -779,6 +753,15 @@ local Window = l:CreateWindow({
         SaveKey = true
     }
 });
+task.spawn(function()
+    task.wait(1)
+    while Window and not Window.Destroyed do
+        if Config.AutoFarm or (Window and not Window.Closed) then
+            pcall(UpdateLiveEnemies)
+        end
+        task.wait(1)
+    end
+end)
 
 local function Notify(title, content, icon)
 	if l then l:Notify({ Title = title, Content = content, Icon = icon, Duration = 3 }) end
@@ -968,42 +951,51 @@ pcall(function()
     end;
 end);
 local function LogicAutoFarm()
-    local currentTargetObj = nil;
+    local currentTargetObj = nil
     while Config.AutoFarm do
-        if Window.Destroyed then
-            break;
-        end;
-        if currentTargetObj then
-            if currentTargetObj.Alive == false or (not currentTargetObj.Data) or (not currentTargetObj.Uid) then
-                currentTargetObj = nil;
-            end;
-        end;
-        if not currentTargetObj then
-            local targetName = Config.SelectedEnemy;
-            if targetName and hrp and GlobalEnemyMap[targetName] then
-                local enemyList = GlobalEnemyMap[targetName] or {};
-                local closest, minDst = nil, math.huge;
-                local myPos = hrp.Position;
-                for _, enemyObj in ipairs(enemyList) do
-                    if enemyObj.Alive == true and enemyObj.Data and enemyObj.Data.CFrame then
-                        local dst = (myPos - enemyObj.Data.CFrame.Position).Magnitude;
-                        if dst < minDst then
-                            minDst = dst;
-                            closest = enemyObj;
-                        end;
-                    end;
-                end;
-                if closest then
-                    currentTargetObj = closest;
-                    if hrp and currentTargetObj.Data and currentTargetObj.Data.CFrame then
-                        hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
-                    end;
-                end;
-            end;
-        end;
-        task.wait(1);
-    end;
-end;
+        if Window.Destroyed then break end
+        if not hrp or not hrp.Parent or not humanoid or humanoid.Health <= 0 then
+            currentTargetObj = nil
+            task.wait(1)
+            if LocalPlayer.Character then
+                hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+            end
+        else
+            if currentTargetObj then
+                if currentTargetObj.Alive == false or (not currentTargetObj.Data) or (not currentTargetObj.Uid) or (not currentTargetObj.Parent) then
+                    currentTargetObj = nil
+                end
+            end
+            if not currentTargetObj then
+                local targetName = Config.SelectedEnemy
+                if targetName and GlobalEnemyMap[targetName] then
+                    local enemyList = GlobalEnemyMap[targetName]
+                    local closest, minDst = nil, math.huge
+                    local myPos = hrp.Position
+                    for _, enemyObj in ipairs(enemyList) do
+                        if enemyObj.Alive == true and enemyObj.Data and enemyObj.Data.CFrame then
+                            local dst = (myPos - enemyObj.Data.CFrame.Position).Magnitude
+                            if dst < minDst then
+                                minDst = dst
+                                closest = enemyObj
+                            end
+                        end
+                    end
+                    if closest then
+                        currentTargetObj = closest
+                    end
+                end
+            end
+            if currentTargetObj and currentTargetObj.Data and currentTargetObj.Data.CFrame then
+                pcall(function()
+                    hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2)
+                end)
+            end
+        end
+        task.wait()
+    end
+end
 local function MaintainAutoStatus()
     while not Window.Destroyed do
         if Config.AutoFarm or Config.AutoDungeon then
@@ -1136,6 +1128,52 @@ local function SetupWaveDetection()
 end
 task.spawn(SetupWaveDetection)
 
+local function IsInGamemode()
+    if Workspace:FindFirstChild("Dungeon") then return true end
+    if Workspace:FindFirstChild("Raid") then return true end
+    if Workspace:FindFirstChild("Defense") then return true end
+    return false
+end
+
+local function IsInLobbyZone()
+    if Workspace:FindFirstChild("Zones") and Workspace.Zones:FindFirstChild("Dungeon") then
+        if isPlayerInZone(Workspace.Zones.Dungeon) then
+            return true
+        end
+    end
+    return false
+end
+
+task.spawn(function()
+    while not Window.Destroyed do
+        local zones = Workspace:FindFirstChild("Zones")
+        if not zones or dontTeleport then
+            task.wait(6)
+            continue
+        end
+        local target = LastZone
+        if not target or target == "" or target == "Unknown" then
+            task.wait(6)
+            continue
+        end
+        local targetZone = zones:FindFirstChild(target)
+        local inTarget = false
+        if targetZone and isPlayerInZone(targetZone) then
+            inTarget = true
+        end
+        if inTarget or IsInGamemode() or IsInLobbyZone() or (not HasJoinedGamemode) then
+            task.wait(6)
+            continue
+        end
+        if Reliable then
+            pcall(function()
+                Reliable:FireServer("Zone Teleport", { target })
+            end)
+        end
+        task.wait(6)
+    end
+end)
+
 local function LogicGamemodes()
     local wasInGamemode = false;
     local currentTargetObj = nil;
@@ -1170,14 +1208,12 @@ local function LogicGamemodes()
                 -- Kita sedang di mode tempur
                 if LastAccessoryState ~= "InMode" and Config.AccessoryInMode then
                     FireAccessory(Config.AccessoryInMode)
-                    l:Notify({Title = "Gear Swap", Content = "Equipped Battle Gear", Icon = "sword", Duration = 2})
                     LastAccessoryState = "InMode"
                 end
             else
                 -- Kita di lobby
                 if LastAccessoryState ~= "OutMode" and Config.AccessoryOutMode then
                     FireAccessory(Config.AccessoryOutMode)
-                    l:Notify({Title = "Gear Swap", Content = "Equipped Lobby Gear", Icon = "home", Duration = 2})
                     LastAccessoryState = "OutMode"
                 end
             end
@@ -1191,6 +1227,23 @@ local function LogicGamemodes()
         if currentMap ~= "Unknown" then
             if isFightingZone then
                 wasInGamemode = true;
+                dontTeleport = true
+
+                local exceedWave = false
+                if string.find(currentMap, "Raid") and waveRaid > (Config.TargetWaveRaid or 500) then exceedWave = true end
+                if string.find(currentMap, "Defense") and waveDef > (Config.TargetWaveDef or 500) then exceedWave = true end
+                if string.find(currentMap, "Dungeon") and waveDungeon > (Config.TargetWaveDungeon or 500) then exceedWave = true end
+
+                if exceedWave and LastZone and LastZone ~= "" and LastZone ~= "Unknown" then
+                    if Reliable then
+                        pcall(function()
+                            Reliable:FireServer("Zone Teleport", { LastZone });
+                        end)
+                    end
+                    currentTargetObj = nil
+                    task.wait(2)
+                    continue
+                end
 
                 if os.time() - refreshTimer > 10 then
                     RefreshEnemyData();
@@ -1258,42 +1311,8 @@ local function LogicGamemodes()
                 currentTargetObj = nil;
                 lastTeleportedUid = nil;
                 hasTeleportedToBossInRaid = false;
-                
-                -- [MODIFICATION: Yehe.lua Robust Teleport Back Logic]
-                if LastZone and LastZone ~= "" and not string.find(LastZone, "Dungeon:") and not string.find(LastZone, "Raid:") and not string.find(LastZone, "Defense:") and LastZone ~= "Unknown" then
-                    l:Notify({
-                        Title = "Mode Finished",
-                        Content = "Returning to " .. LastZone,
-                        Icon = "map-pin",
-                        Duration = 3
-                    });
-                    
-                    -- Retry loop (Yehe.lua logic adaptation)
-                    local attempts = 0
-                    while attempts < 10 do -- Try for ~20 seconds
-                        if Reliable then
-                            pcall(function()
-                                Reliable:FireServer("Zone Teleport", { LastZone });
-                            end);
-                        end;
-                        
-                        -- Check if we arrived
-                        local checkMap = GetCurrentMapStatus()
-                        if checkMap == LastZone then
-                            break
-                        end
-                        
-                        -- If we are in a different Lobby zone (not the one we want, but safe), maybe stop?
-                        -- Yehe forces teleport to specific map. We force to LastZone.
-                        
-                        attempts = attempts + 1
-                        task.wait(2); 
-                    end
-                    
-                    wasInGamemode = false;
-                else
-                    wasInGamemode = false;
-                end;
+                dontTeleport = false
+                wasInGamemode = false;
             else
                 local t = os.date("*t");
                 local currentMinute = t.min;
@@ -1358,6 +1377,7 @@ local function LogicGamemodes()
                             });
                         end);
                     end;
+                    HasJoinedGamemode = true
                     task.wait(5);
                 end;
                 task.wait(1);
