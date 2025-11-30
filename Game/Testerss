@@ -672,42 +672,42 @@ task.spawn(function()
 end)
 
 local function Notify(title, content, icon)
-    if l then l:Notify({ Title = title, Content = content, Icon = icon, Duration = 3 }) end
+	if l then l:Notify({ Title = title, Content = content, Icon = icon, Duration = 3 }) end
 end
 
 local BaseProfile = {
-    Banner = "rbxassetid://124762019485618", Avatar = "rbxassetid://84366761557806", Status = true,
-    Badges = {
-        {
-            Icon = "geist:logo-discord", Title = "Discord", Desc = "Join ANHUB Discord",
-            Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
-        },
-        {
-            Icon = "youtube", Desc = "Subscribe to YouTube",
-            Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Channel link copied!", "youtube") end
-        }
-    }
+	Banner = "rbxassetid://124762019485618", Avatar = "rbxassetid://84366761557806", Status = true,
+	Badges = {
+		{
+			Icon = "geist:logo-discord", Title = "Discord", Desc = "Join ANHUB Discord",
+			Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
+		},
+		{
+			Icon = "youtube", Desc = "Subscribe to YouTube",
+			Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Channel link copied!", "youtube") end
+		}
+	}
 }
 
 local function MakeProfile(data)
-    local p = table.clone(BaseProfile)
-    for k, v in pairs(data or {}) do p[k] = v end
-    return p
+	local p = table.clone(BaseProfile)
+	for k, v in pairs(data or {}) do p[k] = v end
+	return p
 end
 
 Window:Tab({
-    Profile = MakeProfile({ Title = "ANHub Script", Desc = "Anime Weapons",
+	Profile = MakeProfile({ Title = "ANHub Script", Desc = "Anime Weapons",
     Badges = {
-        {
-            Icon = "geist:logo-discord", Desc = "Join ANHUB Discord",
-            Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
-        },
-        {
-            Icon = "youtube", Desc = "Subscribe to YouTube",
-            Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Channel link copied!", "youtube") end
-        }
-    } }),
-    SidebarProfile = true
+		{
+			Icon = "geist:logo-discord", Desc = "Join ANHUB Discord",
+			Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
+		},
+		{
+			Icon = "youtube", Desc = "Subscribe to YouTube",
+			Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Channel link copied!", "youtube") end
+		}
+	} }),
+	SidebarProfile = true
 })
 
 do
@@ -1159,12 +1159,12 @@ end);
 local FarmTab = Window:Tab({
     Title = "Main Feature",
     Icon = "swords",
-        Profile = MakeProfile({
-            Title = "Main Feature",
-            Desc = "Anime Weapons"
-        }),
-        
-        SidebarProfile = false -- Mode Tab Biasa
+		Profile = MakeProfile({
+			Title = "Main Feature",
+			Desc = "Anime Weapons"
+		}),
+		
+		SidebarProfile = false -- Mode Tab Biasa
 });
 
 local FM_Categories = {}
@@ -1416,53 +1416,62 @@ local LiveGamemodeData = {
 local function RefreshGamemodeData(modeType)
     local list = {}
     local moduleScript = ReplicatedStorage.Scripts.Configs.Gamemodes:FindFirstChild(modeType)
-    if moduleScript then
-        local success, data = pcall(require, moduleScript)
-        if success and data and data.PHASES then
-            for index, phaseData in ipairs(data.PHASES) do
-                local name = phaseData.Name
-                -- Normalize Schedule Times
-                local times = {}
-                if phaseData.START_TIMES then
-                    times = phaseData.START_TIMES
-                elseif phaseData.START_MINUTE then
-                    table.insert(times, phaseData.START_MINUTE)
-                end
-                
-                -- Format Time Display
-                local timeStr = "Mins: " .. table.concat(times, ", ")
-                
-                -- Process Reward Images
-                local rewardImages = {}
-                if phaseData.ChanceReward then
-                    for rewardKey, _ in pairs(phaseData.ChanceReward) do
-                        local img = GetRewardAssetId(rewardKey)
-                        if img then table.insert(rewardImages, img) end
-                    end
-                end
-                table.sort(rewardImages)
-                
-                -- Store for Logic (using normalized structure)
-                if not LiveGamemodeData[modeType] then LiveGamemodeData[modeType] = {} end
-                table.insert(LiveGamemodeData[modeType], {
-                    ID = index,
-                    Name = name,
-                    Times = times
-                })
-                
-                -- Add to UI List
-                table.insert(list, {
-                    Title = name,
-                    Value = name, -- Using Name as Key for Dropdown
-                    Desc = string.format("HP: %s\n%s", FormatNumber(phaseData.HealthBase or 0), timeStr),
-                    Images = rewardImages
-                })
+    
+    if not moduleScript then 
+        -- Retry logic implicitly handled by reload button or interval if needed, but here we return empty
+        return {} 
+    end
+
+    local success, data = pcall(require, moduleScript)
+    if success and data and data.PHASES then
+        -- Clear old data for this mode
+        LiveGamemodeData[modeType] = {}
+        
+        for index, phaseData in ipairs(data.PHASES) do
+            local name = phaseData.Name
+            local times = {}
+            
+            -- Normalize Schedule Times
+            if phaseData.START_TIMES then
+                times = phaseData.START_TIMES
+            elseif phaseData.START_MINUTE then
+                table.insert(times, phaseData.START_MINUTE)
             end
+            
+            -- Sort times for cleaner display
+            table.sort(times)
+            local timeStr = "Mins: " .. table.concat(times, ", ")
+            
+            -- Reward Images
+            local rewardImages = {}
+            if phaseData.ChanceReward then
+                for rewardKey, _ in pairs(phaseData.ChanceReward) do
+                    local img = GetRewardAssetId(rewardKey)
+                    if img then table.insert(rewardImages, img) end
+                end
+            end
+            table.sort(rewardImages)
+            
+            -- Store Logic Data
+            table.insert(LiveGamemodeData[modeType], {
+                ID = index,
+                Name = name,
+                Times = times
+            })
+            
+            -- Add to UI List
+            table.insert(list, {
+                Title = name,
+                Value = name, 
+                Desc = string.format("HP: %s | %s", FormatNumber(phaseData.HealthBase or 0), timeStr),
+                Images = rewardImages
+            })
         end
     end
     return list
 end
 
+-- UI Elements
 local GDungeons = FM_Add("GameModes", FarmTab:Dropdown({
     Title = "Dungeons",
     Multi = true,
@@ -1519,6 +1528,89 @@ local GTeleportBack = FM_Add("GameModes", FarmTab:Dropdown({
     end
 }))
 
+-- [HELPER: Countdown & Status]
+local function GetSecondsUntilNext(times)
+    local current = os.date("*t")
+    local cMin = current.min
+    local cSec = current.sec
+    
+    local bestDiff = 999999
+    
+    for _, tMin in ipairs(times) do
+        -- Calculate difference in seconds
+        -- Target time in seconds from start of hour = tMin * 60
+        -- Current time in seconds from start of hour = cMin * 60 + cSec
+        
+        local targetSeconds = tMin * 60
+        local currentSeconds = cMin * 60 + cSec
+        
+        local diff = targetSeconds - currentSeconds
+        
+        -- If diff is negative (event passed this hour), add 1 hour (3600 seconds)
+        if diff < 0 then
+            diff = diff + 3600
+        end
+        
+        if diff < bestDiff then
+            bestDiff = diff
+        end
+    end
+    
+    return bestDiff
+end
+
+local function FormatTime(seconds)
+    if seconds >= 3600 then return "Waiting..." end
+    local m = math.floor(seconds / 60)
+    local s = seconds % 60
+    return string.format("%02d:%02d", m, s)
+end
+
+-- [UPDATE UI LOOP]
+task.spawn(function()
+    while not Window.Destroyed do
+        -- Only update if configured to save performance
+        if Config.AutoGamemode then 
+            -- Dungeons
+            local dMin = 9999
+            for _, mode in ipairs(LiveGamemodeData.Dungeon or {}) do
+                local s = GetSecondsUntilNext(mode.Times)
+                if s < dMin then dMin = s end
+            end
+            if dMin ~= 9999 then
+                pcall(function() GDungeons:SetTitle("Dungeons [Next: " .. FormatTime(dMin) .. "]") end)
+            end
+
+            -- Raids
+            local rMin = 9999
+            for _, mode in ipairs(LiveGamemodeData.Raid or {}) do
+                local s = GetSecondsUntilNext(mode.Times)
+                if s < rMin then rMin = s end
+            end
+            if rMin ~= 9999 then
+                pcall(function() GRaids:SetTitle("Raids [Next: " .. FormatTime(rMin) .. "]") end)
+            end
+
+            -- Defense
+            local dfMin = 9999
+            for _, mode in ipairs(LiveGamemodeData.Defense or {}) do
+                local s = GetSecondsUntilNext(mode.Times)
+                if s < dfMin then dfMin = s end
+            end
+            if dfMin ~= 9999 then
+                pcall(function() GDefenses:SetTitle("Defense [Next: " .. FormatTime(dfMin) .. "]") end)
+            end
+        else
+             -- Reset Titles
+             pcall(function() GDungeons:SetTitle("Dungeons") end)
+             pcall(function() GRaids:SetTitle("Raids") end)
+             pcall(function() GDefenses:SetTitle("Defense") end)
+        end
+        task.wait(1)
+    end
+end)
+
+-- [LOGIC: AUTO GAMEMODE]
 local function GetGamemodeWave()
     local hud = LocalPlayer.PlayerGui:FindFirstChild("Screen") and LocalPlayer.PlayerGui.Screen:FindFirstChild("Hud")
     if not hud then return 0 end
@@ -1548,7 +1640,6 @@ local function KillDungeonTarget(monster)
     local head = monster:FindFirstChild("Head")
     if not head then return end
     
-    -- Hitung Attack Range (Simpel dari Yehe)
     local attackRangePart = Workspace:FindFirstChild("AttackRange")
     local attackRange = 10
     if attackRangePart and attackRangePart:FindFirstChild("Part") then
@@ -1559,23 +1650,20 @@ local function KillDungeonTarget(monster)
     local safeHeight = -2
     local headPos = GetPartPosition(head)
     
-    -- Target Posisi: Belakang Musuh
     local targetPosition = headPos + Vector3.new(0, hrpToFeet + safeHeight, -attackRange + 8)
 
     while Config.AutoGamemode and monster and monster.Parent and head and head.Transparency == 0 do
          if not hrp then task.wait(); break end
          
-         -- Cek apakah player masih di dalam dungeon
          local map = GetCurrentMapStatus()
          if not (string.find(map, "Dungeon") or string.find(map, "Raid") or string.find(map, "Defense")) then
              break
          end
          
-         if GetDistance(hrp, monster) > 10000 then break end -- Terlalu jauh
+         if GetDistance(hrp, monster) > 10000 then break end 
 
          hrp.CFrame = CFrame.new(targetPosition)
          
-         -- Update posisi jika musuh bergerak
          local newHeadPos = GetPartPosition(head)
          local newTargetPosition = newHeadPos + Vector3.new(0, hrpToFeet + safeHeight, -attackRange + 8)
          
@@ -1590,16 +1678,19 @@ end
 local function LogicGamemode()
     while Config.AutoGamemode do
         if Window.Destroyed then break end
+        
+        -- Retry Loading Data if Empty
+        if #LiveGamemodeData.Dungeon == 0 then RefreshGamemodeData("Dungeon") end
+        if #LiveGamemodeData.Raid == 0 then RefreshGamemodeData("Raid") end
+        if #LiveGamemodeData.Defense == 0 then RefreshGamemodeData("Defense") end
+
         local currentMap = GetCurrentMapStatus()
         local inGamemode = string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense")
 
-        -- [LOGIC: INSIDE GAMEMODE - KILL AURA]
         if inGamemode then
+            -- FIGHT LOGIC
             local currentWave = GetGamemodeWave()
-            
-            -- Cek apakah sudah target wave
             if currentWave > Config.TargetWave then
-                -- Teleport Back
                  if Config.TeleportBackMap and Config.TeleportBackMap ~= "None" then
                     if Reliable then
                          Reliable:FireServer("Zone Teleport", {Config.TeleportBackMap})
@@ -1607,14 +1698,12 @@ local function LogicGamemode()
                  end
                  task.wait(2)
             else
-                -- Kill Logic
                 local enemies = Workspace:FindFirstChild("Enemies")
                 if enemies then
                     for _, monster in pairs(enemies:GetChildren()) do
                         local head = monster:FindFirstChild("Head")
                         if head and head.Transparency == 0 then
                             local dist = GetDistance(hrp, monster)
-                            -- Filter Attack Range
                              local attackRangePart = Workspace:FindFirstChild("AttackRange")
                              local ar = 10
                              if attackRangePart and attackRangePart:FindFirstChild("Part") then
@@ -1630,20 +1719,24 @@ local function LogicGamemode()
                 end
             end
         
-        -- [LOGIC: OUTSIDE GAMEMODE - JOIN SCHEDULER]
         else
+            -- JOIN LOGIC
             local currentTime = os.date("*t")
-            local joined = false
+            local currentMin = currentTime.min
+            local currentSec = currentTime.sec
             
-            -- Helper to check times
+            -- Prevent Spam: Only join if seconds are low (start of minute)
+            -- BUT: If user activates script at 10:00:30, they want to join.
+            -- So we check if we haven't joined yet this minute or just loop reliably.
+            
             local function checkAndJoin(configTable, liveData, remotePrefix)
                 if not configTable then return false end
                 for name, state in pairs(configTable) do
-                    if state then
+                    if state == true then -- Explicit check for true
                         for _, modeData in ipairs(liveData) do
                             if modeData.Name == name then
                                 for _, t in ipairs(modeData.Times) do
-                                    if t == currentTime.min then
+                                    if t == currentMin then
                                         if Reliable then
                                             Reliable:FireServer("Join Gamemode", {remotePrefix .. ":" .. modeData.ID})
                                             return true
@@ -1657,16 +1750,14 @@ local function LogicGamemode()
                 return false
             end
             
-            -- Cek Dungeon
+            local joined = false
             if checkAndJoin(Config.TargetDungeons, LiveGamemodeData.Dungeon, "Dungeon") then joined = true end
-            -- Cek Raid (Offset time + 30 is handled in some scripts, here we trust the config)
             if not joined and checkAndJoin(Config.TargetRaids, LiveGamemodeData.Raid, "Raid") then joined = true end
-            -- Cek Defense
             if not joined and checkAndJoin(Config.TargetDefenses, LiveGamemodeData.Defense, "Defense") then joined = true end
             
-            task.wait(1)
+            if joined then task.wait(5) end -- Wait after joining
         end
-        task.wait(0.1)
+        task.wait(0.5)
     end
 end
 
