@@ -60,13 +60,14 @@ local HttpService = game:GetService("HttpService");
 local RunService = game:GetService("RunService");
 local Reliable = (ReplicatedStorage:WaitForChild("Reply")):WaitForChild("Reliable");
 local Unreliable = (ReplicatedStorage:WaitForChild("Reply")):WaitForChild("Unreliable");
+local MaterialsModule = require(ReplicatedStorage.Scripts.Configs.General.Materials)
+local TradeTokenInfo = MaterialsModule.TradeToken
 
 if not isfolder("ANUI") then makefolder("ANUI") end
 if not isfolder(FolderPath) then makefolder(FolderPath) end
 
 local Config = {
     AutoFarm = false,
-    AutoDungeon = false,
     AutoFuse = false,
     AutoRankUp = false,
     AutoYen_Luck = false,
@@ -89,11 +90,20 @@ local Config = {
     AutoChance_Pirate = false,
     AutoChance_Wise = false,
     AutoChance_Leve = false,
+    AutoChance_Sung = false,
+    -- [ACCESSORIES CONFIG]
+    AutoEquipAccessories = false,
+    AccessoryInMode = nil,
+    AccessoryOutMode = nil,
     SelectedEnemy = nil,
     ZoneConfigurations = {},
-    TargetDungeon = {},
-    TargetRaid = {},
-    TargetDefense = {}
+    -- [GAMEMODES CONFIG]
+    AutoGamemode = false,
+    TargetDungeons = {},
+    TargetRaids = {},
+    TargetDefenses = {},
+    TargetWave = 500,
+    TeleportBackMap = "None"
 };
 local hrp, humanoid;
 local LastZone = nil;
@@ -139,7 +149,8 @@ local ChanceUpgradeTypes = {
     "Breath",
     "Pirate",
     "Wise",
-    "Leve"
+    "Leve",
+    "Sung"
 };
 local EnemyDropdown = nil;
 local RankProgressUI = nil;
@@ -273,6 +284,23 @@ pcall(function()
     end
 end)
 
+-- [LOAD ACCESSORIES DATABASE]
+local AccessoriesConfig = {}
+pcall(function()
+    local AccModuleScript = ConfigsPath:FindFirstChild("MultipleZones") and ConfigsPath.MultipleZones:FindFirstChild("Accessories")
+    if AccModuleScript then
+        AccessoriesConfig = require(AccModuleScript)
+    end
+end)
+
+local EnemiesConfig = {}
+pcall(function()
+    local MZPath = ConfigsPath:FindFirstChild("MultipleZones") or ConfigsPath:FindFirstChild("Multiple Zones")
+    if MZPath and MZPath:FindFirstChild("Enemies") then
+        EnemiesConfig = require(MZPath.Enemies)
+    end
+end)
+
 local ChanceModules = {};
 local ChancePath = ReplicatedStorage.Scripts.Configs:FindFirstChild("ChanceUpgrades");
 if ChancePath then
@@ -310,8 +338,8 @@ end;
 local function GetYenBuff(name, lvl)
     return YenModule.GetUpgradeBuff(name, lvl);
 end;
-local function GetTokenCost(lvl)
-    return TokenModule.GetUpgradeCost(lvl);
+local function GetTokenCost(lvl,name)
+    return TokenModule.GetUpgradeCost(lvl,name);
 end;
 local function GetTokenBuff(name, lvl)
     return TokenModule.GetUpgradeBuff(name, lvl);
@@ -325,42 +353,6 @@ end;
 local function FormatNumber(n)
     return UtilsModule.ToText(n);
 end;
-local RollMaterialMap = {
-    Biju = "BijuToken",
-    Race = "RaceToken",
-    Sayajin = "SayajinToken",
-    Fruits = "FruitsToken",
-    Haki = "HakiToken",
-    Breathing = "BreathingToken",
-    Organization = "OrganizationToken",
-    Titan = "TitanToken",
-    MagicEyes = "EyeToken",
-    DemonArt = "DemonToken"
-};
-local RollDisplayNames = {
-    Biju = "Biju Shard",
-    Race = "Race Shard",
-    Sayajin = "Sayajin Shard",
-    Fruits = "Fruits Shard",
-    Haki = "Haki Shard",
-    Breathing = "Breathing Stone",
-    Organization = "Organization Shard",
-    Titan = "Titan Shard",
-    MagicEyes = "Magic Eyes",
-    DemonArt = "Demon Art"
-};
-local RollTypeToConfig = {
-    Biju = "AutoRollBiju",
-    Race = "AutoRollRace",
-    Sayajin = "AutoRollSayajin",
-    Fruits = "AutoRollFruits",
-    Haki = "AutoRollHaki",
-    Breathing = "AutoRollBreathing",
-    Organization = "AutoRollOrganization",
-    Titan = "AutoRollTitan",
-    MagicEyes = "AutoRollMagicEyes",
-    DemonArt = "AutoRollDemonArt"
-};
 
 local function LoadZoneDB()
     if isfile(FolderPath .. "/" .. ZoneDBFile) then
@@ -446,6 +438,24 @@ local function GetDynamicRankIcon()
     end);
     return iconId;
 end;
+local function GetIcon(id)
+    return "rbxassetid://" .. tostring(id)
+end
+local function GetYenIcon()
+    local icon = "rbxassetid://84366761557806"
+    pcall(function()
+        icon = (game:GetService("Players")).LocalPlayer.PlayerGui.Screen.Hud.left.yen.icon.Image;
+    end)
+    return icon
+end
+local function GetTrainerIcon()
+    local icon = "rbxassetid://10723415903"
+    pcall(function()
+        icon = (game:GetService("Players")).LocalPlayer.PlayerGui.Screen.Hud.left.buttons.Arsenal.button.icon.Image;
+    end)
+    return icon
+end
+-- moved earlier
 local function GetRollIconAsset(rollType)
     local fallback = "rbxassetid://84366761557806";
     local assetId = "";
@@ -469,77 +479,6 @@ local function GetRollIconAsset(rollType)
         end;
     end;
     return fallback;
-end;
-local dungeonList, dungeonDB, raidList, raidDB = {}, {}, {}, {};
-local defenseList, defenseDB = {}, {};
-local function LoadDungeonData()
-    local success, module = pcall(function()
-        return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Dungeon);
-    end);
-    if success and module and module.PHASES then
-        dungeonList, dungeonDB = {}, {};
-        for id, phase in ipairs(module.PHASES) do
-            local dName = phase.Name;
-            local hpCalc = math.floor((phase.HealthBase or 0) / 50);
-            local desc = "Hp Base: " .. FormatNumber(hpCalc);
-            table.insert(dungeonList, {
-                Title = dName,
-                Desc = desc,
-                Value = dName
-            });
-            dungeonDB[dName] = {
-                ID = id,
-                Time = phase.START_MINUTE,
-                BaseDesc = desc
-            };
-        end;
-    end;
-end;
-local function LoadRaidData()
-    local success, module = pcall(function()
-        return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Raid);
-    end);
-    if success and module and module.PHASES then
-        raidList, raidDB = {}, {};
-        for id, phase in ipairs(module.PHASES) do
-            local rName = phase.Name;
-            local hpCalc = math.floor((phase.HealthBase or 0) / 50);
-            local desc = "Hp Base: " .. FormatNumber(hpCalc);
-            table.insert(raidList, {
-                Title = rName,
-                Desc = desc,
-                Value = rName
-            });
-            raidDB[rName] = {
-                ID = id,
-                Times = phase.START_TIMES,
-                BaseDesc = desc
-            };
-        end;
-    end;
-end;
-local function LoadDefenseData()
-    local success, module = pcall(function()
-        return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Defense);
-    end);
-    if success and module and module.PHASES then
-        defenseList, defenseDB = {}, {};
-        for id, phase in ipairs(module.PHASES) do
-            local rName = phase.Name;
-            local hpCalc = math.floor((phase.HealthBase or 0) / 50);
-            local desc = "Hp Base: " .. FormatNumber(hpCalc);
-            table.insert(defenseList, {
-                Title = rName,
-                Desc = desc,
-                Value = rName
-            });
-            defenseDB[rName] = {
-                ID = id,
-                Times = phase.START_TIMES,
-                BaseDesc = desc
-            };
-        end;
-    end;
 end;
 local function LoadRollData(rollType)
     local success, module = pcall(function()
@@ -568,9 +507,6 @@ local function LoadRollData(rollType)
         end;
     end;
 end;
-LoadDungeonData();
-LoadRaidData();
-LoadDefenseData();
 for _, rollType in ipairs(AllRollTypes) do
     LoadRollData(rollType);
 end;
@@ -603,71 +539,97 @@ local function GetRewardAssetId(rewardKey)
     return nil
 end
 
+-- [HELPER: GET OWNED ACCESSORIES LIST (WITH ICON)]
+local function GetOwnedAccessories()
+    local list = {}
+    local pData = getgenv().PlayerData
+    if pData and pData.Accessories then
+        for id, owned in pairs(pData.Accessories) do
+            if owned == true then
+                local info = AccessoriesConfig[id]
+                local displayName = info and info.Display or id
+                
+                -- [FEATURE: FETCH IMAGE FROM TEMPLATE]
+                local imageId = "rbxassetid://84366761557806" -- Default placeholder
+                if info and info.Template then
+                    imageId = "rbxassetid://" .. tostring(info.Template)
+                end
+                
+                table.insert(list, {
+                    Title = displayName,
+                    Value = id, -- Internal Name
+                    Icon = imageId, -- FIX: Gunakan Key 'Icon' agar gambar muncul (sama kayak Select Token)
+                    Desc = info and info.Rarity or "Accessory"
+                })
+            end
+        end
+    end
+    table.sort(list, function(a,b) return a.Title < b.Title end)
+    return list
+end
+
+local function FireAccessory(accName)
+    if Reliable then
+        pcall(function()
+            Reliable:FireServer("Accessory Equip", {accName})
+        end)
+    end
+end
+
 -- [MODIFIKASI BARU: UPDATE RefreshEnemyData]
 local function RefreshEnemyData()
-    local uiList = {};
-    local seenForUI = {};
-    GlobalEnemyMap = {};
-    local EnemiesFolder = Workspace:FindFirstChild("Enemies");
-    if not EnemiesFolder then
-        return uiList;
-    end;
-    local childCount = #EnemiesFolder:GetChildren();
-    if tick() - LastEnemyScanTime < 1.5 and childCount == LastEnemyChildCount then
-        return CurrentZoneEnemiesCache;
-    end;
-    LastEnemyScanTime = tick();
-    LastEnemyChildCount = childCount;
-    for _, v in pairs(getgc(true)) do
-        if type(v) == "table" then
-            local config = rawget(v, "Config");
-            local alive = rawget(v, "Alive");
-            local uid = rawget(v, "Uid");
-            local dataSection = rawget(v, "Data");
-            if config and alive == true and uid and dataSection and dataSection.CFrame then
-                local display = config.Display or "Unknown";
-                local realName = rawget(v, "Character") and v.Character.Name or display;
-                if not GlobalEnemyMap[realName] then
-                    GlobalEnemyMap[realName] = {};
-                end;
-                table.insert(GlobalEnemyMap[realName], v);
-                if not seenForUI[realName] then
-                    seenForUI[realName] = true;
-
-                    -- [BARU: Ambil Gambar dari ChanceReward]
+    local uiList = {}
+    if EnemiesConfig and CurrentZoneName and CurrentZoneName ~= "" and CurrentZoneName ~= "Unknown" then
+        local added = {}
+        for key, data in pairs(EnemiesConfig) do
+            if data.Zone == CurrentZoneName then
+                local displayName = data.Display or key
+                if not added[displayName] then
+                    added[displayName] = true
                     local rewardImages = {}
-                    if config.ChanceReward then
-                        for rewardKey, _ in pairs(config.ChanceReward) do
+                    if data.ChanceReward then
+                        for rewardKey, _ in pairs(data.ChanceReward) do
                             local img = GetRewardAssetId(rewardKey)
-                            if img then
-                                table.insert(rewardImages, img)
-                            end
+                            if img then table.insert(rewardImages, img) end
                         end
                     end
-                    -- Urutkan agar rapi (opsional)
                     table.sort(rewardImages)
-
                     table.insert(uiList, {
-                        Title = display .. " (" .. (config.Difficult or "Normal") .. ")",
-                        Value = realName,
-                        Desc = "HP: " .. FormatNumber((config.MaxHealth or 0)),
-                        HP = config.MaxHealth or 0,
-                        Images = rewardImages -- Field Images ditambahkan untuk Dropdown
-                    });
-                end;
-            end;
-        end;
-    end;
-    table.sort(uiList, function(a, b)
-        return a.HP < b.HP;
-    end);
-    CurrentZoneEnemiesCache = uiList;
-    return uiList;
-end;
+                        Title = displayName .. " (" .. (data.Difficult or "Normal") .. ")",
+                        Value = displayName,
+                        Desc = "HP: " .. FormatNumber((data.MaxHealth or 0)),
+                        HP = data.MaxHealth or 0,
+                        Images = rewardImages
+                    })
+                end
+            end
+        end
+    end
+    table.sort(uiList, function(a, b) return a.HP < b.HP end)
+    CurrentZoneEnemiesCache = uiList
+    return uiList
+end
+
+local function UpdateLiveEnemies()
+    local newMap = {}
+    for _, v in pairs(getgc(true)) do
+        if type(v) == "table" then
+            local rawConfig = rawget(v, "Config")
+            local alive = rawget(v, "Alive")
+            local data = rawget(v, "Data")
+            if rawConfig and alive == true and data and data.CFrame then
+                local keyName = rawConfig.Display or (v.Character and v.Character.Name) or "Unknown"
+                if not newMap[keyName] then newMap[keyName] = {} end
+                table.insert(newMap[keyName], v)
+            end
+        end
+    end
+    GlobalEnemyMap = newMap
+end
 
 
 
-local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/main.lua"))()
+local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/main.lua?v="..math.random()))();
 
 local Window = l:CreateWindow({
     Title = "AN Hub - Anime Weapons",
@@ -678,7 +640,7 @@ local Window = l:CreateWindow({
     Acrylic = true,
     Theme = "Dark",
     Resizable = true,
-    SideBarWidth = 170,
+    SideBarWidth = 220,
     HideSearchBar = true,
     ToggleKey = Enum.KeyCode.RightControl,
     KeySystem = {
@@ -691,6 +653,62 @@ local Window = l:CreateWindow({
         SaveKey = true
     }
 });
+
+task.delay(1.0, function()
+    Window:CollapseSidebar()
+end)
+
+task.delay(3.0, function()
+    Window:ExpandSidebar()
+end)
+task.spawn(function()
+    task.wait(1)
+    while Window and not Window.Destroyed do
+        if Config.AutoFarm or Config.AutoGamemode or (Window and not Window.Closed) then
+            pcall(UpdateLiveEnemies)
+        end
+        task.wait(1)
+    end
+end)
+
+local function Notify(title, content, icon)
+    if l then l:Notify({ Title = title, Content = content, Icon = icon, Duration = 3 }) end
+end
+
+local BaseProfile = {
+    Banner = "rbxassetid://124762019485618", Avatar = "rbxassetid://84366761557806", Status = true,
+    Badges = {
+        {
+            Icon = "geist:logo-discord", Title = "Discord", Desc = "Join ANHUB Discord",
+            Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
+        },
+        {
+            Icon = "youtube", Desc = "Subscribe to YouTube",
+            Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Channel link copied!", "youtube") end
+        }
+    }
+}
+
+local function MakeProfile(data)
+    local p = table.clone(BaseProfile)
+    for k, v in pairs(data or {}) do p[k] = v end
+    return p
+end
+
+Window:Tab({
+    Profile = MakeProfile({ Title = "ANHub Script", Desc = "Anime Weapons",
+    Badges = {
+        {
+            Icon = "geist:logo-discord", Desc = "Join ANHUB Discord",
+            Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Invite link copied to clipboard!", "geist:logo-discord") end
+        },
+        {
+            Icon = "youtube", Desc = "Subscribe to YouTube",
+            Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Channel link copied!", "youtube") end
+        }
+    } }),
+    SidebarProfile = true
+})
 
 do
     Window:Tag({
@@ -706,7 +724,7 @@ end;
 
 Window:OnDestroy(function()
     Config.AutoFarm = false;
-    Config.AutoDungeon = false;
+    Config.AutoGamemode = false;
     Config.AutoFuse = false;
     Config.AutoRankUp = false;
     Config.AutoRollBiju = false;
@@ -842,45 +860,54 @@ pcall(function()
     end;
 end);
 local function LogicAutoFarm()
-    local currentTargetObj = nil;
+    local currentTargetObj = nil
     while Config.AutoFarm do
-        if Window.Destroyed then
-            break;
-        end;
-        if currentTargetObj then
-            if currentTargetObj.Alive == false or (not currentTargetObj.Data) or (not currentTargetObj.Uid) then
-                currentTargetObj = nil;
-            end;
-        end;
-        if not currentTargetObj then
-            local targetName = Config.SelectedEnemy;
-            if targetName and hrp and GlobalEnemyMap[targetName] then
-                local enemyList = GlobalEnemyMap[targetName] or {};
-                local closest, minDst = nil, math.huge;
-                local myPos = hrp.Position;
-                for _, enemyObj in ipairs(enemyList) do
-                    if enemyObj.Alive == true and enemyObj.Data and enemyObj.Data.CFrame then
-                        local dst = (myPos - enemyObj.Data.CFrame.Position).Magnitude;
-                        if dst < minDst then
-                            minDst = dst;
-                            closest = enemyObj;
-                        end;
-                    end;
-                end;
-                if closest then
-                    currentTargetObj = closest;
-                    if hrp and currentTargetObj.Data and currentTargetObj.Data.CFrame then
-                        hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
-                    end;
-                end;
-            end;
-        end;
-        task.wait(1);
-    end;
-end;
+        if Window.Destroyed then break end
+        if not hrp or not hrp.Parent or not humanoid or humanoid.Health <= 0 then
+            currentTargetObj = nil
+            task.wait(1)
+            if LocalPlayer.Character then
+                hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+            end
+        else
+            if currentTargetObj then
+                if currentTargetObj.Alive == false or (not currentTargetObj.Data) or (not currentTargetObj.Uid) or (not currentTargetObj.Parent) then
+                    currentTargetObj = nil
+                end
+            end
+            if not currentTargetObj then
+                local targetName = Config.SelectedEnemy
+                if targetName and GlobalEnemyMap[targetName] then
+                    local enemyList = GlobalEnemyMap[targetName]
+                    local closest, minDst = nil, math.huge
+                    local myPos = hrp.Position
+                    for _, enemyObj in ipairs(enemyList) do
+                        if enemyObj.Alive == true and enemyObj.Data and enemyObj.Data.CFrame then
+                            local dst = (myPos - enemyObj.Data.CFrame.Position).Magnitude
+                            if dst < minDst then
+                                minDst = dst
+                                closest = enemyObj
+                            end
+                        end
+                    end
+                    if closest then
+                        currentTargetObj = closest
+                    end
+                end
+            end
+            if currentTargetObj and currentTargetObj.Data and currentTargetObj.Data.CFrame then
+                pcall(function()
+                    hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2)
+                end)
+            end
+        end
+        task.wait()
+    end
+end
 local function MaintainAutoStatus()
     while not Window.Destroyed do
-        if Config.AutoFarm or Config.AutoDungeon then
+        if Config.AutoFarm or Config.AutoEquipAccessories or Config.AutoGamemode then
             local Data = (getgenv()).PlayerData;
             if Data and Data.Settings and Reliable then
                 if Data.Settings.AutoClick == false then
@@ -959,194 +986,35 @@ task.spawn(function()
         EnemiesFolder.ChildRemoved:Connect(TriggerRefresh)
     end
 end);
-local function LogicGamemodes()
-    local wasInGamemode = false;
-    local currentTargetObj = nil;
-    local refreshTimer = 0;
-    local lastTeleportedUid = nil;
-    local hasTeleportedToBossInRaid = false;
-    while Config.AutoDungeon do
-        if Window.Destroyed then
-            break;
-        end;
-        local currentMap = GetCurrentMapStatus();
-        local inLobbyZone = false;
-        if Workspace:FindFirstChild("Zones") and Workspace.Zones:FindFirstChild("Dungeon") then
-            if isPlayerInZone(Workspace.Zones.Dungeon) then
-                inLobbyZone = true;
-            end;
-        end;
-        local EnemiesFolder = Workspace:FindFirstChild("Enemies")
-        local hasEnemies = EnemiesFolder and #EnemiesFolder:GetChildren() > 0
-        local isFightingZone = string.find(currentMap, ":") and (string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense"));
-        if currentMap == "Raid" then
-            isFightingZone = true
-        elseif currentMap == "Defense" then
-            isFightingZone = hasEnemies
+
+
+local function GetPartPosition(obj)
+    if typeof(obj) == "Instance" then
+        if obj:IsA("Model") then
+            return obj:GetPivot().Position
+        elseif obj:IsA("BasePart") then
+            return obj.Position
         end
-
-        if currentMap ~= "Unknown" then
-            if isFightingZone then
-                wasInGamemode = true;
-
-                if os.time() - refreshTimer > 10 then
-                    RefreshEnemyData();
-                    refreshTimer = os.time();
-                end;
-                if currentTargetObj then
-                    if currentTargetObj.Alive == false or (not currentTargetObj.Data) then
-                        currentTargetObj = nil;
-                    end;
-                end;
-
-                local isRaid = string.find(currentMap, "Raid")
-                local isDefense = string.find(currentMap, "Defense")
-
-                if not currentTargetObj and hrp then
-                    local closest, minDst = nil, math.huge;
-                    local myPos = hrp.Position;
-                    local bossFound = false
-
-                    for _, enemyList in pairs(GlobalEnemyMap) do
-                        for _, enemyObj in ipairs(enemyList) do
-                            if enemyObj.Alive == true and enemyObj.Data and enemyObj.Data.CFrame then
-                                local dst = (myPos - enemyObj.Data.CFrame.Position).Magnitude;
-                                local config = rawget(enemyObj, "Config")
-                                local isBoss = config and config.Difficult == "Emperor"
-
-                                if isRaid and isBoss then
-                                    closest = enemyObj
-                                    bossFound = true
-                                    break
-                                end
-
-                                if dst < minDst then
-                                    minDst = dst;
-                                    if not bossFound then
-                                        closest = enemyObj;
-                                    end
-                                end;
-                            end;
-                        end;
-                        if bossFound then break end
-                    end;
-
-                    if closest then
-                        currentTargetObj = closest;
-                        if currentTargetObj.Data and currentTargetObj.Data.CFrame then
-                            local config = rawget(currentTargetObj, "Config")
-                            local isBoss = config and config.Difficult == "Emperor"
-                            local targetUid = currentTargetObj.Uid
-
-                            if isRaid then
-                                if isBoss and (not hasTeleportedToBossInRaid) then
-                                    hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
-                                    hasTeleportedToBossInRaid = true;
-                                end
-                            else
-                                hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
-                                lastTeleportedUid = targetUid
-                            end
-                        end;
-                    end;
-                end;
-                task.wait(0.1);
-            elseif inLobbyZone or wasInGamemode and (not isFightingZone) then
-                currentTargetObj = nil;
-                lastTeleportedUid = nil;
-                hasTeleportedToBossInRaid = false;
-                if LastZone and LastZone ~= "" and not string.find(LastZone, "Dungeon:") and not string.find(LastZone, "Raid:") and not string.find(LastZone, "Defense:") and LastZone ~= "Unknown" then
-                    l:Notify({
-                        Title = "Mode Finished",
-                        Content = "In Lobby -> Returning to " .. LastZone,
-                        Icon = "map-pin",
-                        Duration = 3
-                    });
-                    if Reliable then
-                        pcall(function()
-                            Reliable:FireServer("Zone Teleport", {
-                                LastZone
-                            });
-                        end);
-                    end;
-                    wasInGamemode = false;
-                    task.wait(4);
-                else
-                    wasInGamemode = false;
-                end;
-            else
-                local t = os.date("*t");
-                local currentMinute = t.min;
-                local targetString, targetName = nil, "";
-                for _, dName in pairs(Config.TargetDungeon) do
-                    local data = dungeonDB[dName];
-                    if data and currentMinute == data.Time then
-                        targetString = "Dungeon:" .. tostring(data.ID);
-                        targetName = dName;
-                        break;
-                    end;
-                end;
-                if not targetString then
-                    for _, rName in pairs(Config.TargetRaid) do
-                        local data = raidDB[rName];
-                        if data and data.Times then
-                            for _, timeVal in ipairs(data.Times) do
-                                if currentMinute == timeVal then
-                                    targetString = "Raid:" .. tostring(data.ID);
-                                    targetName = rName;
-                                    break;
-                                end;
-                            end;
-                        end;
-                        if targetString then
-                            break;
-                        end;
-                    end;
-                end;
-                if not targetString then
-                    for _, dName in pairs(Config.TargetDefense) do
-                        local data = defenseDB[dName];
-                        if data and data.Times then
-                            for _, timeVal in ipairs(data.Times) do
-                                if currentMinute == timeVal then
-                                    targetString = "Defense:" .. tostring(data.ID);
-                                    targetName = dName;
-                                    break;
-                                end;
-                            end;
-                        end;
-                        if targetString then
-                            break;
-                        end;
-                    end;
-                end;
-
-                if targetString then
-                    if not string.find(currentMap, "Dungeon:") and (not string.find(currentMap, "Raid:")) and (not string.find(currentMap, "Defense:")) then
-                        LastZone = currentMap;
-                    end;
-                    l:Notify({
-                        Title = "Auto Mode",
-                        Content = "Joining " .. targetName,
-                        Icon = "swords",
-                        Duration = 2
-                    });
-                    if Reliable then
-                        pcall(function()
-                            Reliable:FireServer("Join Gamemode", {
-                                targetString
-                            });
-                        end);
-                    end;
-                    task.wait(5);
-                end;
-                task.wait(1);
-            end;
-        else
-            task.wait(1);
-        end;
-    end;
-end;
+    end
+    return nil
+end
+local function GetDistance(a, b)
+    local pa = GetPartPosition(a)
+    local pb = GetPartPosition(b)
+    if pa and pb then
+        return (pa - pb).Magnitude
+    end
+    return math.huge
+end
+local function GetEnemiesFolder()
+    local client = workspace:FindFirstChild("Client")
+    if client and client:FindFirstChild("Enemies") then
+        return client.Enemies
+    end
+    return Workspace:FindFirstChild("Enemies")
+end
+ 
+ 
 task.spawn(function()
     while not Window.Destroyed do
         local anyRollActive = false;
@@ -1287,28 +1155,97 @@ task.spawn(function()
         DiscordInfo:SetDesc("Failed to fetch info.");
     end;
 end);
-local MainSection = Window:Section({
-    Title = "Main Features",
-    Icon = "sword",
-    Opened = true
+
+local FarmTab = Window:Tab({
+    Title = "Main Feature",
+    Icon = "swords",
+        Profile = MakeProfile({
+            Title = "Main Feature",
+            Desc = "Anime Weapons"
+        }),
+        
+        SidebarProfile = false -- Mode Tab Biasa
 });
 
-local FarmTab = MainSection:Tab({
-    Title = "Farming",
-    Icon = "swords"
-});
-local FarmingManagerSection = FarmTab:Section({
-    Title = "Farming Manager",
-    Icon = "activity",
-    Opened = true
-});
-local FarmTabs = CreateTabButtons(FarmingManagerSection, {
-    "Zone Farming",
-    "Gamemodes"
+local FM_Categories = {}
+local FM_CategoryDescriptions = {
+    ["Zone Farming"] = "Auto farm enemies per zone and specific targets",
+    ["GameModes"] = "Auto Join & Farm Dungeons/Raids by Time",
+    ["Accessories"] = "Select & auto equip accessories for battle/lobby",
+    ["Exchange"] = "Exchange materials, preview tokens and calculate amounts",
+    ["Crate Roll"] = "Auto roll various gachas and monitor material stock",
+    ["Upgrade: Yen"] = "Upgrade Yen buff along with cost and effects",
+    ["Upgrade: Token"] = "Upgrade Token buff with shards",
+    ["Upgrade: Rank"] = "Rank progress, requirements, and bonuses",
+    ["Upgrade: Trainer"] = "Trainer settings and enhancement"
+}
+local function FM_GetElementFrame(elem)
+    local f = rawget(elem, "ElementFrame") or (elem.UIElements and elem.UIElements.Main) or rawget(elem, "GroupFrame")
+    return f
+end
+local function FM_Add(cat, elem)
+    if not FM_Categories[cat] then FM_Categories[cat] = {} end
+    table.insert(FM_Categories[cat], elem)
+    local frame = FM_GetElementFrame(elem)
+    if frame then frame.Visible = false end
+    return elem
+end
+local function FM_UpdateTabProfile(selected)
+    local desc = FM_CategoryDescriptions[selected] or ""
+    local containers = {}
+    if FarmTab and FarmTab.UIElements then
+        table.insert(containers, FarmTab.UIElements.ContainerFrameCanvas)
+        table.insert(containers, FarmTab.UIElements.ContainerFrame)
+    end
+    for _, cf in ipairs(containers) do
+        if cf then
+            local header = cf:FindFirstChild("ProfileHeader")
+            if header then
+                local tc = header:FindFirstChild("TextContainer")
+                if tc then
+                    for _, child in ipairs(tc:GetChildren()) do
+                        if child:IsA("TextLabel") then
+                            if child.LayoutOrder == 1 then child.Text = selected end
+                            if child.LayoutOrder == 2 then child.Text = desc end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+local function FM_OnChange(selected)
+    for name, elems in pairs(FM_Categories) do
+        local vis = (name == selected)
+        for _, e in ipairs(elems) do
+            local f = FM_GetElementFrame(e)
+            if f then f.Visible = vis end
+        end
+    end
+    pcall(function()
+        FM_UpdateTabProfile(selected)
+    end)
+end
+local FM_Category = FarmTab:Category({
+    Title = "Select Category",
+    Default = "Zone Farming",
+    Options = {
+        {Title="Zone Farming", Icon="swords"},
+        {Title="GameModes", Icon="skull"},
+        {Title="Accessories", Icon="package"},
+        {Title="Exchange", Icon=GetIcon(TradeTokenInfo.Template)},
+        {Title="Crate Roll", Icon="package"},
+        {Title="Upgrade: Yen", Icon=GetYenIcon()},
+        {Title="Upgrade: Token", Icon="rbxassetid://124644932563791"},
+        {Title="Upgrade: Rank", Icon=GetDynamicRankIcon()},
+        {Title="Upgrade: Trainer", Icon=GetTrainerIcon()}
+    },
+    Callback = FM_OnChange
 })
+FarmTab:Space({Columns=1})
 
 -- [MODIFIKASI: DROPDOWN UNTUK ENEMIES DENGAN IMAGES]
-EnemyDropdown = FarmingManagerSection:Dropdown({
+EnemyDropdown = FarmTab:Dropdown({
     Title = "Select Enemy",
     Multi = false,
     Values = {},
@@ -1322,16 +1259,16 @@ EnemyDropdown = FarmingManagerSection:Dropdown({
         SaveZoneConfig(CurrentZoneName, selectedItem);
     end
 });
-FarmTabs:Add("Zone Farming", EnemyDropdown);
-local RefreshBtn = FarmingManagerSection:Button({
+FM_Add("Zone Farming", EnemyDropdown);
+local RefreshBtn = FarmTab:Button({
     Title = "Refresh List",
     Icon = "refresh-cw",
     Callback = function()
         EnemyDropdown:Refresh(RefreshEnemyData());
     end
 });
-FarmTabs:Add("Zone Farming", RefreshBtn);
-local FarmToggle = FarmingManagerSection:Toggle({
+FM_Add("Zone Farming", RefreshBtn);
+local FarmToggle = FarmTab:Toggle({
     Title = "Auto Farm",
     Flag = "AutoFarm_Cfg",
     Callback = function(val)
@@ -1341,13 +1278,455 @@ local FarmToggle = FarmingManagerSection:Toggle({
         end;
     end
 });
-FarmTabs:Add("Zone Farming", FarmToggle);
-local DgnDrop = FarmingManagerSection:Dropdown({
+FM_Add("Zone Farming", FarmToggle);
+
+-- [ACCESSORIES UI]
+local function UpdateAccDropdown(dropdown, val, defaultTitle)
+    local selectedId = type(val) == "table" and val.Value or val
+    if selectedId then
+        local info = AccessoriesConfig[selectedId]
+        if info then
+            dropdown:SetTitle(info.Display)
+            local icon = "rbxassetid://84366761557806"
+            if info.Template then
+                icon = "rbxassetid://" .. tostring(info.Template)
+            end
+            dropdown:SetIcon(icon, 30)
+            dropdown:SetDesc(info.Rarity or "Accessory")
+        else
+            dropdown:SetTitle(selectedId)
+            dropdown:SetIcon("rbxassetid://84366761557806", 30)
+            dropdown:SetDesc("Unknown")
+        end
+    else
+        dropdown:SetTitle(defaultTitle or "Select Gear")
+        dropdown:SetDesc("None Selected")
+        dropdown:SetIcon("rbxassetid://84366761557806", 20)
+    end
+end
+
+local AccInMode
+AccInMode = FarmTab:Dropdown({
+    Title = "Select Battle Gear",
+    Desc = "None Selected",
+    Multi = false,
+    Values = GetOwnedAccessories(),
+    Image = "rbxassetid://84366761557806",
+    ImageSize = 20,
+    Flag = "AccInMode_Cfg",
+    Callback = function(val)
+        local v = type(val) == "table" and val.Value or val
+        Config.AccessoryInMode = v
+        UpdateAccDropdown(AccInMode, v, "Select Battle Gear")
+    end
+})
+FM_Add("Accessories", AccInMode)
+
+if Config.AccessoryInMode then
+    UpdateAccDropdown(AccInMode, Config.AccessoryInMode, "Select Battle Gear")
+end
+
+local AccOutMode
+AccOutMode = FarmTab:Dropdown({
+    Title = "Select Lobby Gear",
+    Desc = "None Selected",
+    Multi = false,
+    Values = GetOwnedAccessories(),
+    Image = "rbxassetid://84366761557806",
+    ImageSize = 20,
+    Flag = "AccOutMode_Cfg",
+    Callback = function(val)
+        local v = type(val) == "table" and val.Value or val
+        Config.AccessoryOutMode = v
+        UpdateAccDropdown(AccOutMode, v, "Select Lobby Gear")
+    end
+})
+FM_Add("Accessories", AccOutMode)
+
+if Config.AccessoryOutMode then
+    UpdateAccDropdown(AccOutMode, Config.AccessoryOutMode, "Select Lobby Gear")
+end
+
+local RefreshAccBtn = FarmTab:Button({
+    Title = "Refresh Accessories",
+    Icon = "refresh-cw",
+    Callback = function()
+        local list = GetOwnedAccessories()
+        AccInMode:Refresh(list)
+        AccOutMode:Refresh(list)
+        
+        if Config.AccessoryInMode then UpdateAccDropdown(AccInMode, Config.AccessoryInMode, "Select Battle Gear") end
+        if Config.AccessoryOutMode then UpdateAccDropdown(AccOutMode, Config.AccessoryOutMode, "Select Lobby Gear") end
+    end
+})
+FM_Add("Accessories", RefreshAccBtn)
+
+local function LogicAccessories()
+    local LastAccessoryState = "None"
+    while Config.AutoEquipAccessories and not Window.Destroyed do
+        local currentMap = GetCurrentMapStatus()
+        local enemiesFolder = GetEnemiesFolder()
+        local hasEnemies = enemiesFolder and #enemiesFolder:GetChildren() > 0
+        local isFightingZone = false
+        if string.find(currentMap, ":") and (string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense")) then
+            isFightingZone = true
+        end
+        if currentMap == "Raid" then
+            isFightingZone = true
+        elseif currentMap == "Defense" then
+            isFightingZone = hasEnemies
+        end
+
+        if isFightingZone then
+            if LastAccessoryState ~= "InMode" and Config.AccessoryInMode then
+                FireAccessory(Config.AccessoryInMode)
+                LastAccessoryState = "InMode"
+            end
+        else
+            if LastAccessoryState ~= "OutMode" and Config.AccessoryOutMode then
+                FireAccessory(Config.AccessoryOutMode)
+                LastAccessoryState = "OutMode"
+            end
+        end
+        task.wait(0.5)
+    end
+end
+
+local AccToggle = FarmTab:Toggle({
+    Title = "Auto Equip Accessories",
+    Flag = "AutoEquipAcc_Cfg",
+    Callback = function(val)
+        Config.AutoEquipAccessories = val
+        if val then
+            task.spawn(LogicAccessories)
+        end;
+    end
+})
+FM_Add("Accessories", AccToggle)
+
+-- =========================================================================
+-- [GAMEMODES SECTION] (Imported from AnimeWeapons.lua)
+-- =========================================================================
+
+local dungeonList, dungeonDB, raidList, raidDB = {}, {}, {}, {};
+local defenseList, defenseDB = {}, {};
+
+local function LoadDungeonData()
+    local success, module = pcall(function()
+        return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Dungeon);
+    end);
+    if success and module and module.PHASES then
+        dungeonList, dungeonDB = {}, {};
+        for id, phase in ipairs(module.PHASES) do
+            local dName = phase.Name;
+            local hpCalc = math.floor((phase.HealthBase or 0) / 50);
+            local desc = "Hp Base: " .. FormatNumber(hpCalc);
+            
+            local rewardImages = {}
+            if phase.ChanceReward then
+                for rewardKey, _ in pairs(phase.ChanceReward) do
+                     local img = GetRewardAssetId(rewardKey)
+                     if img then table.insert(rewardImages, img) end
+                end
+            end
+            table.sort(rewardImages)
+
+            table.insert(dungeonList, {
+                Title = dName,
+                Desc = desc,
+                Value = dName,
+                Images = rewardImages
+            });
+            dungeonDB[dName] = {
+                ID = id,
+                Time = phase.START_MINUTE,
+                BaseDesc = desc
+            };
+        end;
+    end;
+end;
+
+local function LoadRaidData()
+    local success, module = pcall(function()
+        return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Raid);
+    end);
+    if success and module and module.PHASES then
+        raidList, raidDB = {}, {};
+        for id, phase in ipairs(module.PHASES) do
+            local rName = phase.Name;
+            local hpCalc = math.floor((phase.HealthBase or 0) / 50);
+            local desc = "Hp Base: " .. FormatNumber(hpCalc);
+            
+            local rewardImages = {}
+            if phase.ChanceReward then
+                for rewardKey, _ in pairs(phase.ChanceReward) do
+                     local img = GetRewardAssetId(rewardKey)
+                     if img then table.insert(rewardImages, img) end
+                end
+            end
+            table.sort(rewardImages)
+
+            table.insert(raidList, {
+                Title = rName,
+                Desc = desc,
+                Value = rName,
+                Images = rewardImages
+            });
+            raidDB[rName] = {
+                ID = id,
+                Times = phase.START_TIMES,
+                BaseDesc = desc
+            };
+        end;
+    end;
+end;
+
+local function LoadDefenseData()
+    local success, module = pcall(function()
+        return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Defense);
+    end);
+    if success and module and module.PHASES then
+        defenseList, defenseDB = {}, {};
+        for id, phase in ipairs(module.PHASES) do
+            local rName = phase.Name;
+            local hpCalc = math.floor((phase.HealthBase or 0) / 50);
+            local desc = "Hp Base: " .. FormatNumber(hpCalc);
+
+            local rewardImages = {}
+            if phase.ChanceReward then
+                for rewardKey, _ in pairs(phase.ChanceReward) do
+                     local img = GetRewardAssetId(rewardKey)
+                     if img then table.insert(rewardImages, img) end
+                end
+            end
+            table.sort(rewardImages)
+
+            table.insert(defenseList, {
+                Title = rName,
+                Desc = desc,
+                Value = rName,
+                Images = rewardImages
+            });
+            defenseDB[rName] = {
+                ID = id,
+                Times = phase.START_TIMES,
+                BaseDesc = desc
+            };
+        end;
+    end;
+end;
+
+LoadDungeonData();
+LoadRaidData();
+LoadDefenseData();
+
+local function LogicGamemodes()
+    local wasInGamemode = false;
+    local currentTargetObj = nil;
+    local refreshTimer = 0;
+    local lastTeleportedUid = nil;
+    local hasTeleportedToBossInRaid = false;
+    
+    local hrp = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"))
+
+    while Config.AutoDungeon do
+        if Window.Destroyed then
+            break;
+        end;
+        
+        if not hrp or not hrp.Parent then
+             hrp = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"))
+        end
+
+        local currentMap = GetCurrentMapStatus();
+        local inLobbyZone = false;
+        if Workspace:FindFirstChild("Zones") and Workspace.Zones:FindFirstChild("Dungeon") then
+            if isPlayerInZone(Workspace.Zones.Dungeon) then
+                inLobbyZone = true;
+            end;
+        end;
+        local EnemiesFolder = Workspace:FindFirstChild("Enemies")
+        local hasEnemies = EnemiesFolder and #EnemiesFolder:GetChildren() > 0
+        local isFightingZone = string.find(currentMap, ":") and (string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense"));
+        if currentMap == "Raid" then
+            isFightingZone = true
+        elseif currentMap == "Defense" then
+            isFightingZone = hasEnemies
+        end
+
+        if currentMap ~= "Unknown" then
+            if isFightingZone then
+                wasInGamemode = true;
+
+                if os.time() - refreshTimer > 10 then
+                    RefreshEnemyData();
+                    refreshTimer = os.time();
+                end;
+                if currentTargetObj then
+                    if currentTargetObj.Alive == false or (not currentTargetObj.Data) then
+                        currentTargetObj = nil;
+                    end;
+                end;
+
+                local isRaid = string.find(currentMap, "Raid")
+                local isDefense = string.find(currentMap, "Defense")
+
+                if not currentTargetObj and hrp then
+                    local closest, minDst = nil, math.huge;
+                    local myPos = hrp.Position;
+                    local bossFound = false
+
+                    for _, enemyList in pairs(GlobalEnemyMap) do
+                        for _, enemyObj in ipairs(enemyList) do
+                            if enemyObj.Alive == true and enemyObj.Data and enemyObj.Data.CFrame then
+                                local dst = (myPos - enemyObj.Data.CFrame.Position).Magnitude;
+                                local config = rawget(enemyObj, "Config")
+                                local isBoss = config and config.Difficult == "Emperor"
+
+                                if isRaid and isBoss then
+                                    closest = enemyObj
+                                    bossFound = true
+                                    break
+                                end
+
+                                if dst < minDst then
+                                    minDst = dst;
+                                    if not bossFound then
+                                        closest = enemyObj;
+                                    end
+                                end;
+                            end;
+                        end;
+                        if bossFound then break end
+                    end;
+
+                    if closest then
+                        currentTargetObj = closest;
+                        if currentTargetObj.Data and currentTargetObj.Data.CFrame then
+                            local config = rawget(currentTargetObj, "Config")
+                            local isBoss = config and config.Difficult == "Emperor"
+                            local targetUid = currentTargetObj.Uid
+
+                            if isRaid then
+                                if isBoss and (not hasTeleportedToBossInRaid) then
+                                    hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
+                                    hasTeleportedToBossInRaid = true;
+                                end
+                            else
+                                hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
+                                lastTeleportedUid = targetUid
+                            end
+                        end;
+                    end;
+                end;
+                task.wait(0.1);
+            elseif inLobbyZone and wasInGamemode and (not isFightingZone) then
+                currentTargetObj = nil;
+                lastTeleportedUid = nil;
+                hasTeleportedToBossInRaid = false;
+                if LastZone and LastZone ~= "" and not string.find(LastZone, "Dungeon:") and not string.find(LastZone, "Raid:") and not string.find(LastZone, "Defense:") and LastZone ~= "Unknown" then
+                    l:Notify({
+                        Title = "Mode Finished",
+                        Content = "In Lobby -> Returning to " .. LastZone,
+                        Icon = "map-pin",
+                        Duration = 3
+                    });
+                    if Reliable then
+                        pcall(function()
+                            Reliable:FireServer("Zone Teleport", {
+                                LastZone
+                            });
+                        end);
+                    end;
+                    wasInGamemode = false;
+                    task.wait(6);
+                else
+                    wasInGamemode = false;
+                end;
+            else
+                local t = os.date("*t");
+                local currentMinute = t.min;
+                local targetString, targetName = nil, "";
+                if Config.TargetDungeon then
+                    for _, dName in pairs(Config.TargetDungeon) do
+                        local data = dungeonDB[dName];
+                        if data and currentMinute == data.Time then
+                            targetString = "Dungeon:" .. tostring(data.ID);
+                            targetName = dName;
+                            break;
+                        end;
+                    end;
+                end;
+                if not targetString and Config.TargetRaid then
+                    for _, rName in pairs(Config.TargetRaid) do
+                        local data = raidDB[rName];
+                        if data and data.Times then
+                            for _, timeVal in ipairs(data.Times) do
+                                if currentMinute == timeVal then
+                                    targetString = "Raid:" .. tostring(data.ID);
+                                    targetName = rName;
+                                    break;
+                                end;
+                            end;
+                        end;
+                        if targetString then
+                            break;
+                        end;
+                    end;
+                end;
+                if not targetString and Config.TargetDefense then
+                    for _, dName in pairs(Config.TargetDefense) do
+                        local data = defenseDB[dName];
+                        if data and data.Times then
+                            for _, timeVal in ipairs(data.Times) do
+                                if currentMinute == timeVal then
+                                    targetString = "Defense:" .. tostring(data.ID);
+                                    targetName = dName;
+                                    break;
+                                end;
+                            end;
+                        end;
+                        if targetString then
+                            break;
+                        end;
+                    end;
+                end;
+
+                if targetString then
+                    if not string.find(currentMap, "Dungeon") and (not string.find(currentMap, "Raid:")) and (not string.find(currentMap, "Defense:")) then
+                        LastZone = currentMap;
+                    end;
+                    l:Notify({
+                        Title = "Auto Mode",
+                        Content = "Joining " .. targetName,
+                        Icon = "swords",
+                        Duration = 2
+                    });
+                    if Reliable then
+                        pcall(function()
+                            Reliable:FireServer("Join Gamemode", {
+                                targetString
+                            });
+                        end);
+                    end;
+                    task.wait(5);
+                end;
+                task.wait(1);
+            end;
+        else
+            task.wait(1);
+        end;
+    end;
+end;
+
+local DgnDrop = FM_Add("GameModes", FarmTab:Dropdown({
     Title = "Select Dungeon",
     Multi = true,
     AllowNone = true,
     Flag = "DungeonDiff_Cfg",
     Values = dungeonList,
+    ImageSize = UDim2.fromOffset(20, 20),
+    ImagePadding = 6,
     Callback = function(val)
         local t = {};
         for _, v in pairs(val) do
@@ -1355,8 +1734,7 @@ local DgnDrop = FarmingManagerSection:Dropdown({
         end;
         Config.TargetDungeon = t;
     end
-});
-FarmTabs:Add("Gamemodes", DgnDrop);
+}));
 
 task.spawn(function()
     while not Window.Destroyed do
@@ -1381,7 +1759,8 @@ task.spawn(function()
                 table.insert(newList, {
                     Title = item.Title,
                     Value = item.Value,
-                    Desc = data.BaseDesc .. " | Starts in: " .. timeStr
+                    Desc = data.BaseDesc .. " | Starts in: " .. timeStr,
+                    Images = item.Images
                 });
             else
                 table.insert(newList, item);
@@ -1396,12 +1775,15 @@ task.spawn(function()
         task.wait(1);
     end;
 end);
-local RaidDrop = FarmingManagerSection:Dropdown({
+
+local RaidDrop = FM_Add("GameModes", FarmTab:Dropdown({
     Title = "Select Raid",
     Multi = true,
     AllowNone = true,
     Flag = "RaidDiff_Cfg",
     Values = raidList,
+    ImageSize = UDim2.fromOffset(20, 20),
+    ImagePadding = 6,
     Callback = function(val)
         local t = {};
         for _, v in pairs(val) do
@@ -1409,14 +1791,16 @@ local RaidDrop = FarmingManagerSection:Dropdown({
         end;
         Config.TargetRaid = t;
     end
-});
-FarmTabs:Add("Gamemodes", RaidDrop);
-local DefenseDrop = FarmingManagerSection:Dropdown({
+}));
+
+local DefenseDrop = FM_Add("GameModes", FarmTab:Dropdown({
     Title = "Select Defense",
     Multi = true,
     AllowNone = true,
     Flag = "DefenseDiff_Cfg",
     Values = defenseList,
+    ImageSize = UDim2.fromOffset(20, 20),
+    ImagePadding = 6,
     Callback = function(val)
         local t = {};
         for _, v in pairs(val) do
@@ -1424,8 +1808,7 @@ local DefenseDrop = FarmingManagerSection:Dropdown({
         end;
         Config.TargetDefense = t;
     end
-});
-FarmTabs:Add("Gamemodes", DefenseDrop);
+}));
 
 task.spawn(function()
     local function GetNextTimeDiff(times, currentMin, currentSec)
@@ -1462,7 +1845,8 @@ task.spawn(function()
                 table.insert(newRaidList, {
                     Title = item.Title,
                     Value = item.Value,
-                    Desc = data.BaseDesc .. " | Starts in: " .. timeStr
+                    Desc = data.BaseDesc .. " | Starts in: " .. timeStr,
+                    Images = item.Images
                 })
             else
                 table.insert(newRaidList, item)
@@ -1488,7 +1872,8 @@ task.spawn(function()
                 table.insert(newDefenseList, {
                     Title = item.Title,
                     Value = item.Value,
-                    Desc = data.BaseDesc .. " | Starts in: " .. timeStr
+                    Desc = data.BaseDesc .. " | Starts in: " .. timeStr,
+                    Images = item.Images
                 })
             else
                 table.insert(newDefenseList, item)
@@ -1503,7 +1888,7 @@ task.spawn(function()
     end
 end)
 
-local ModeToggle = FarmingManagerSection:Toggle({
+local ModeToggle = FM_Add("GameModes", FarmTab:Toggle({
     Title = "Auto Join & Kill",
     Flag = "AutoDungeon_Cfg",
     Callback = function(val)
@@ -1512,27 +1897,18 @@ local ModeToggle = FarmingManagerSection:Toggle({
             task.spawn(LogicGamemodes);
         end;
     end
-});
-FarmTabs:Add("Gamemodes", ModeToggle);
+}));
 
-local GeneralTab = MainSection:Tab({
+-- =========================================================================
+
+FM_OnChange("Zone Farming")
+
+local GeneralTab = Window:Tab({
     Title = "General",
     Icon = "settings"
 });
 
-local GeneralManagerSection = GeneralTab:Section({
-    Title = "General Manager",
-    Icon = "settings-2",
-    Opened = true
-})
-
-local GeneralTabs = CreateTabButtons(GeneralManagerSection, {
-    "Exchange",
-    "Crate Roll"
-})
-
-local MaterialsModule = require(ReplicatedStorage.Scripts.Configs.General.Materials)
-local TradeTokenInfo = MaterialsModule.TradeToken
+local GeneralManagerSection = FarmTab
 local ExchangeList = {}
 for k, v in pairs(MaterialsModule) do
     if v.Exchangeable and k ~= "TradeToken" then
@@ -1547,9 +1923,7 @@ local PrevMaterialsDigest = nil
 local ExchangeAmount = 1
 local ExchangeIsBuying = false
 
-local function GetIcon(id)
-    return "rbxassetid://"..tostring(id)
-end
+-- moved earlier
 
 local function GetMaterialsDigest()
     local pData = (getgenv()).PlayerData
@@ -1581,7 +1955,7 @@ local function BuildExchangeValues()
 end
 
 local PreviewGroup = GeneralManagerSection:Group()
-GeneralTabs:Add("Exchange", PreviewGroup)
+FM_Add("Exchange", PreviewGroup)
 
 local MatPreview = PreviewGroup:Dropdown({
     Title = "Select Token",
@@ -1623,7 +1997,7 @@ local ExSlider = GeneralManagerSection:Slider({
         ExchangePercent = v / 100
     end
 })
-GeneralTabs:Add("Exchange", ExSlider)
+FM_Add("Exchange", ExSlider)
 
 local ExSwap = GeneralManagerSection:Toggle({
     Title = "Swap Direction (Buy Mode)",
@@ -1632,7 +2006,7 @@ local ExSwap = GeneralManagerSection:Toggle({
         ExchangeIsBuying = v
     end
 })
-GeneralTabs:Add("Exchange", ExSwap)
+FM_Add("Exchange", ExSwap)
 
 local ExchangeButton = GeneralManagerSection:Button({
     Title = "Exchange",
@@ -1660,7 +2034,7 @@ local ExchangeButton = GeneralManagerSection:Button({
         end
     end
 })
-GeneralTabs:Add("Exchange", ExchangeButton)
+FM_Add("Exchange", ExchangeButton)
 
 task.spawn(function()
     while not Window.Destroyed do
@@ -1719,7 +2093,7 @@ local _rollCount = 0;
 for _, rollType in ipairs(AllRollTypes) do
     if _rollCount % 2 == 0 then
         _rollGroup = GeneralManagerSection:Group({});
-        GeneralTabs:Add("Crate Roll", _rollGroup)
+        FM_Add("Crate Roll", _rollGroup)
     end;
     local tokenKey = (RollConfigs[rollType] and RollConfigs[rollType].MaterialKey) or (rollType .. "Token");
     local displayName = (MaterialsModule[tokenKey] and MaterialsModule[tokenKey].Display) or rollType;
@@ -1805,11 +2179,6 @@ GeneralTab:Toggle({
     end
 });
 
-
-local YenTab = MainSection:Tab({
-    Title = "Upgrade",
-    Icon = "chevrons-up"
-});
 local function GetStatsIcon()
     local icon = "bar-chart";
     pcall(function()
@@ -1817,58 +2186,11 @@ local function GetStatsIcon()
     end);
     return icon;
 end;
-local YenMainSection = YenTab:Section({
-    Title = "Stats Upgrade Manager",
-    Icon = GetStatsIcon(),
-    Opened = true
-});
-local function GetYenIcon()
-    local icon = "rbxassetid://84366761557806";
-    pcall(function()
-        icon = (game:GetService("Players")).LocalPlayer.PlayerGui.Screen.Hud.left.yen.icon.Image;
-    end);
-    return icon;
-end;
-local function GetTrainerIcon()
-    local icon = "rbxassetid://10723415903";
-    pcall(function()
-        icon = (game:GetService("Players")).LocalPlayer.PlayerGui.Screen.Hud.left.buttons.Arsenal.button.icon.Image;
-    end);
-    return icon;
-end;
-local YenTabs = CreateTabButtons(YenMainSection, {"Yen", "Token", "Rank", "Trainer"})
+local YenMainSection = FarmTab
+-- moved earlier
 local upgradeOrder = {"Luck", "Damage", "Yen", "Mastery", "Critical"}
 
-task.spawn(function()
-    task.wait(0.1)
-
-    local function SetupButton(btnName, iconId)
-        local btn = YenTabs.ButtonObjects[btnName]
-        if btn then
-            local lbl = btn:FindFirstChildOfClass("TextLabel")
-            if lbl then
-                lbl.Size = UDim2.new(1, -25, 1, 0)
-                lbl.Position = UDim2.new(0, 25, 0, 0)
-                lbl.TextXAlignment = Enum.TextXAlignment.Left
-            end
-
-            local iconImg = Instance.new("ImageLabel")
-            iconImg.Name = btnName.."Icon"
-            iconImg.Parent = btn
-            iconImg.Size = UDim2.fromOffset(20, 20)
-            iconImg.AnchorPoint = Vector2.new(0, 0.5)
-            iconImg.Position = UDim2.new(0, 0, 0.5, 0)
-            iconImg.BackgroundTransparency = 1
-            iconImg.Image = iconId
-            iconImg.ScaleType = Enum.ScaleType.Fit
-        end
-    end
-
-    SetupButton("Yen", GetYenIcon())
-    SetupButton("Token", "rbxassetid://124644932563791")
-    SetupButton("Rank", GetDynamicRankIcon())
-    SetupButton("Trainer", GetTrainerIcon())
-end)
+-- Using FarmTab categories; no sub-tab buttons needed
 
 local _yenGroup
 local _yenCount = 0
@@ -1876,7 +2198,7 @@ for _, name in ipairs(upgradeOrder) do
     if YenUpgradeConfig[name] then
         if _yenCount % 2 == 0 then
             _yenGroup = YenMainSection:Group({})
-            YenTabs:Add("Yen", _yenGroup)
+            FM_Add("Upgrade: Yen", _yenGroup)
         end
         local myToggle = _yenGroup:Toggle({
             Title = name, Flag = "AutoYen_" .. name, Callback = function(val) Config["AutoYen_" .. name] = val end
@@ -1898,7 +2220,7 @@ if TokenUpgradeConfig then
     for _, name in ipairs(sortedTokens) do
         if _tokenCount % 2 == 0 then
             _tokenGroup = YenMainSection:Group({})
-            YenTabs:Add("Token", _tokenGroup)
+            FM_Add("Upgrade: Token", _tokenGroup)
         end
         local myToggle = _tokenGroup:Toggle({
             Title = name, Flag = "AutoToken_" .. name, Callback = function(val) Config["AutoToken_" .. name] = val end
@@ -1909,17 +2231,17 @@ if TokenUpgradeConfig then
 end
 
 RankProgressUI = YenMainSection:Paragraph({ Title = "Rank Progress", Desc = "Waiting for data...", Image = GetDynamicRankIcon(), ImageSize = 40 })
-YenTabs:Add("Rank", RankProgressUI)
+FM_Add("Upgrade: Rank", RankProgressUI)
 
 local RankToggle = YenMainSection:Toggle({ Title = "Auto Rank Up", Flag = "AutoRankUp_Cfg", Callback = function(val) Config.AutoRankUp = val end })
-YenTabs:Add("Rank", RankToggle)
+FM_Add("Upgrade: Rank", RankToggle)
 
 local _chanceGroup
 local _chanceCount = 0
 for _, name in ipairs(ChanceUpgradeTypes) do
     if _chanceCount % 2 == 0 then
         _chanceGroup = YenMainSection:Group({})
-        YenTabs:Add("Trainer", _chanceGroup)
+        FM_Add("Upgrade: Trainer", _chanceGroup)
     end
     local myToggle = _chanceGroup:Toggle({
         Title = "Loading...",
@@ -1935,7 +2257,7 @@ end
 if MagicEyesModule then
     if _chanceCount % 2 == 0 then
         _chanceGroup = YenMainSection:Group({})
-        YenTabs:Add("Trainer", _chanceGroup)
+        FM_Add("Upgrade: Trainer", _chanceGroup)
     end
 
     local MagicEyeToggle = _chanceGroup:Toggle({
@@ -2050,7 +2372,7 @@ end
 if DemonArtModule then
     if _chanceCount % 2 == 0 then
         _chanceGroup = YenMainSection:Group({})
-        YenTabs:Add("Trainer", _chanceGroup)
+        FM_Add("Upgrade: Trainer", _chanceGroup)
     end
 
     local DemonArtToggle = _chanceGroup:Toggle({
@@ -2385,7 +2707,7 @@ task.spawn(function()
                 local currentToken = Data.Materials.UpgradeToken or 0;
                 for name, configData in pairs(TokenUpgradeConfig) do
                     local lvl = Data.TokenUpgrades[name] or 0;
-                    local cost = GetTokenCost(lvl);
+                    local cost = GetTokenCost(lvl,name);
                     local toggle = TokenUpgradeToggleUI[name];
                     if toggle and toggle.SetTitle and toggle.SetDesc then
                         local maxLvl = configData.MaxLevel or 999;
@@ -2520,9 +2842,7 @@ task.spawn(function()
 end);
 local AllSections = {
     CommunitySection,
-    MainSection,
-    FarmingManagerSection,
-    YenMainSection,
+    FarmTab,
     ConfigSection,
     SecuritySection
 };
@@ -2534,4 +2854,4 @@ for _, sec in pairs(AllSections) do
         end;
     end);
 end;
-Window:SelectTab(1);
+Window:SelectTab(FarmTab.Index);
