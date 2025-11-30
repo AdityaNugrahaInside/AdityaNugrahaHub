@@ -1858,7 +1858,7 @@ FM_Add("Accessories", AccToggle)
 
 FM_OnChange("Zone Farming")
 
-local GeneralTab = MainSection:Tab({
+local GeneralTab = Window:Tab({
     Title = "General",
     Icon = "settings"
 });
@@ -2809,4 +2809,4 @@ for _, sec in pairs(AllSections) do
         end;
     end);
 end;
-Window:SelectTab(2);
+Window:SelectTab(FarmTab.Index);
