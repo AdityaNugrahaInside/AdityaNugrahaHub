@@ -1,94 +1,103 @@
-repeat
-    task.wait();
-until game:IsLoaded();
+repeat task.wait() until game:IsLoaded()
 
 -- [LOADING SCREEN]
 loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/loading2.lua"))()
 
--- [CONFIG PATHS - SYSTEM SEPERTI YUHU]
-local FolderPath = "ANUI/AnimeAdvanced";
-local ExpiryFile = FolderPath .. "/ANHub_Key_Timer.txt";
-local LocationDB = FolderPath .. "/Location_DB.json"; -- Pengganti TigerHubAA/locationList.json
+-- [SERVICES]
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TextChatService = game:GetService("TextChatService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local VirtualUser = game:GetService('VirtualUser')
+
+-- [VARS & CHARACTER]
+local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+local humanoid = character:WaitForChild("Humanoid")
+
+LocalPlayer.CharacterAdded:Connect(function(newChar)
+    character = newChar
+    hrp = newChar:WaitForChild("HumanoidRootPart")
+    humanoid = newChar:WaitForChild("Humanoid")
+end)
+
+-- Anti-AFK
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+-- [CONFIG PATHS]
+local FolderPath = "ANUI/AnimeAdvanced"
+local ConfigPath = FolderPath .. "/config"
+local SelectionsFile = FolderPath .. "/MapSelections.json" -- File Save Target Per-Map
+local ConfigName = "AN_AnimeAdvanced"
 
 if not isfolder("ANUI") then makefolder("ANUI") end
 if not isfolder(FolderPath) then makefolder(FolderPath) end
-if not isfolder(FolderPath .. "/Config") then makefolder(FolderPath .. "/Config") end
+if not isfolder(ConfigPath) then makefolder(ConfigPath) end
 
--- [SECURE WIPE / KEY SYSTEM LOGIC]
-local function SecureWipe()
-    if not isfile or (not delfile) or (not readfile) or (not listfiles) then
-        return;
-    end;
-    local currentTime = os.time();
-    local isExpired = false;
+-- [DATA SYSTEM: MAP SELECTION]
+local MapSelections = {}
+local isUpdatingUI = false 
+local isTransitioning = false 
 
-    if isfile(ExpiryFile) then
-        local savedTime = tonumber(readfile(ExpiryFile)) or 0;
-        if currentTime > savedTime then
-            isExpired = true;
-        end;
-    elseif isfolder(FolderPath) then
-        isExpired = true;
-    end;
+-- Load Data Map Selections
+if isfile(SelectionsFile) then
+    local success, result = pcall(function() return HttpService:JSONDecode(readfile(SelectionsFile)) end)
+    if success and type(result) == "table" then MapSelections = result end
+end
 
-    if isExpired then
-        if isfile(ExpiryFile) then
-            delfile(ExpiryFile);
-        end;
-        local UserId = tostring(game:GetService("Players").LocalPlayer.UserId);
-        if isfolder(FolderPath) then
-            for _, file in pairs(listfiles(FolderPath)) do
-                if string.find(file, ".key") or string.find(file, UserId) then
-                    pcall(function()
-                        delfile(file);
-                    end);
-                end;
-            end;
-        end;
-        task.wait(0.5);
-    end;
-end;
-SecureWipe();
+local function SaveMapSelection(mapName, enemyValue)
+    if not mapName or isUpdatingUI or isTransitioning then return end
+    MapSelections[mapName] = enemyValue
+    writefile(SelectionsFile, HttpService:JSONEncode(MapSelections))
+end
 
--- [SERVICES & LOCALS]
-local Players = game:GetService("Players");
-local LocalPlayer = Players.LocalPlayer;
-local HttpService = game:GetService("HttpService");
-local VirtualUser = game:GetService('VirtualUser')
-local TextChatService = game:GetService("TextChatService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
--- [UI LIBRARY INIT]
-local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/main.lua?v="..math.random()))();
-
--- [HELPER FUNCTIONS KEY]
+-- [HELPER: KEYS]
 local function GetOnlineKeys()
-    local keys = { "Keynya", "FreeKey" };
-    local url = "https://raw.githubusercontent.com/AdityaNugrahaInside/ANHub/refs/heads/main/Key";
-    local success, response = pcall(function()
-        return game:HttpGet(url);
-    end);
+    local keys = {"Keynya", "FreeKey"}
+    local url = "https://raw.githubusercontent.com/AdityaNugrahaInside/ANHub/refs/heads/main/Key"
+    local success, response = pcall(function() return game:HttpGet(url) end)
     if success then
-        keys = {};
+        keys = {}
         for line in response:gmatch("[^\r\n]+") do
-            local cleanKey = string.gsub(line, "^%s*(.-)%s*$", "%1");
-            if cleanKey ~= "" then
-                table.insert(keys, cleanKey);
-            end;
-        end;
-    end;
-    return keys;
-end;
+            local cleanKey = string.gsub(line, "^%s*(.-)%s*$", "%1")
+            if cleanKey ~= "" then table.insert(keys, cleanKey) end
+        end
+    end
+    return keys
+end
 
--- ============================================================================
---  UI WINDOW CREATION
--- ============================================================================
+-- [HELPER: DATA SCAN]
+-- Fungsi ini hanya sebagai backup jika BridgeNet belum mengirim data
+local function ScanPlayerData()
+    local oldData = getgenv().PlayerData
+    -- Jangan hapus nil secara paksa jika kita sudah punya data dari BridgeNet agar tidak flicker
+    if not getgenv().PlayerData then
+        local candidates = {}
+        for _, v in pairs(getgc(true)) do
+            if type(v) == "table" then
+                if oldData and v == oldData then continue end
+                if rawget(v, "Map") and rawget(v, "Coins") and rawget(v, "Stats") then
+                    if v.Map ~= nil then table.insert(candidates, v) end
+                end
+            end
+        end
+        if #candidates > 0 then getgenv().PlayerData = candidates[#candidates] end
+    end
+end
+task.spawn(ScanPlayerData)
 
+-- [UI LIBRARY]
+local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/main.lua"))()
 local Window = l:CreateWindow({
     Title = "AN Hub - Anime Advanced",
     Icon = "rbxassetid://84366761557806",
     Author = "Aditya Nugraha",
-    Folder = "AnimeWeapons", -- Folder ConfigManager
+    Folder = "AnimeAdvanced",
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
     Theme = "Dark",
@@ -105,8 +114,9 @@ local Window = l:CreateWindow({
         Note = "Join Discord for Key",
         SaveKey = true
     }
-});
+})
 
+-- Sidebar Animation
 task.delay(1.0, function() Window:CollapseSidebar() end)
 task.delay(3.0, function() Window:ExpandSidebar() end)
 
@@ -115,302 +125,333 @@ local function Notify(title, content, icon)
 end
 
 -- ============================================================================
---  GAME LOGIC (VARIABLES & FUNCTIONS)
+--  GAME LOGIC VARIABLES
 -- ============================================================================
-
--- Local Vars
-local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local hrp = character:WaitForChild("HumanoidRootPart")
-local humanoid = character:WaitForChild("Humanoid")
-
--- MMain
-local HatchGui = LocalPlayer:WaitForChild("PlayerGui")
 local attackRangePart 
 local distance = 10000
-local farm2Delay = 0.1
-local dontTeleport
-local gachaZone
 local attackRange 
-local inGamemode
--- FFarm
-local monsterList = {}; local nameList = {}; local targetList = {}
-local isAutoJoinRaid = false; 
-local locationList = {}; local locationNumber = {}; 
-local locationTargetList = {}
-local isTeleportFarm = false
--- Boss
-local toogleBoss = {}; local bossList = {};
--- DDungeon, Raid, Trial
-local waveRaid = 0; local waveDungeon = 0; local waveDef = 0; local waveTrial = 0;
-local targetWaveRaid = 500; local targetWaveDef = 500; 
-local targetWaveDungeon = 500; local targetWaveTrial = 500;
-local trialList = {}; local targetTrial = {};
-local isTrial = false
--- PPowers
-local powerList = {}; local tooglePower = {};
--- SStronger
-local isAutoClaimExpedition = false;
-local toogleStar = {}
-local targetStar = "None"; local expeditionTarget = "None";
-local teleportBackMap = "None";  
-local isTele = false
-local repeatTime = 1
-local isHatch = false
+
+-- Farm Vars
+local targetList = {}
+local nameList = {} 
 local isFarm1 = false
-local isFarm2 = false
+
+-- Boss Vars
+local GlobalBossDB = {} -- Dynamic from Module
+local selectedBosses = {}
+local isAutoBoss = false 
+local isGlobalBossActive = false 
+local savedPreviousMap = nil
+
+-- Dungeon/Trial Vars
+local waveTrial = 0
+local targetWaveTrial = 500
+local trialList = {{name = "TrialEasy", time = 15}}
+local isTrial = false
+
+-- Raid Vars (NEW)
+local waveRaid = 0
+local targetWaveRaid = 50
+local isRaid = false
+local raidJoinList = {{name = "Raid", time = 45}} -- Sesuaikan waktu jika perlu, default disamakan logicnya
+
+-- Powers
+local powerList = {
+    {name = "Hero Rank", auto = false},
+    {name = "Ninja Rank", auto = false},
+    {name = "Haki", auto = false},
+    {name = "Passive", auto = false},
+    {name = "Clan", auto = false}
+}
+
+-- Stronger
+local isAutoClaimExpedition = false
+local targetStar = "None"
+local expeditionTarget = "None"
 local isRankUp = false
-local currentTime = os.date("*t")
-local isAutoAttack = false
 
--- Anti AFK
-LocalPlayer.Idled:Connect(function()
-    VirtualUser:CaptureController()
-    VirtualUser:ClickButton2(Vector2.new())
-end)
-
--- Character Added
-LocalPlayer.CharacterAdded:Connect(function(newChar)
-    character = newChar
-    hrp = newChar:WaitForChild("HumanoidRootPart")
-    humanoid = newChar:WaitForChild("Humanoid")
-end)
-
--- [LOOP: ATTACK RANGE]
+-- Range Checker
 task.spawn(function()
     while not Window.Destroyed do
         attackRangePart = workspace:FindFirstChild("Cache") and workspace.Cache:FindFirstChild("Area")
-        if not attackRangePart then 
-            task.wait(1)
-            continue
-        end
-        attackRange = attackRangePart.Size.X/2
+        if attackRangePart then attackRange = attackRangePart.Size.X/2 end
         task.wait(1)
     end
 end)
 
--- Utils
-local function getPosition(obj1)
-    if obj1:IsA("Model") then
-        return obj1:GetPivot().Position
-    elseif obj1:IsA("BasePart") then
-        return obj1.Position
-    else
-        return nil
-    end
+local function getPosition(obj)
+    if obj:IsA("Model") then return obj:GetPivot().Position
+    elseif obj:IsA("BasePart") then return obj.Position end
+    return nil
 end
 
 local function getDistance(obj1, obj2)
-    local pos1, pos2
-    if obj1:IsA("Model") then
-        pos1 = obj1:GetPivot().Position
-    elseif obj1:IsA("BasePart") then
-        pos1 = obj1.Position
-    end
-
-    if obj2:IsA("Model") then
-        pos2 = obj2:GetPivot().Position
-    elseif obj2:IsA("BasePart") then
-        pos2 = obj2.Position
-    end
-    
-    if pos1 and pos2 then
-        return (pos1 - pos2).Magnitude
-    end
+    local pos1 = getPosition(obj1)
+    local pos2 = getPosition(obj2)
+    if pos1 and pos2 then return (pos1 - pos2).Magnitude end
     return 999999
 end
 
-local function DecodeJSON(str)
-    local success, result = pcall(function() return HttpService:JSONDecode(str) end)
-    if success then return result else return {} end
+-- ============================================================================
+--  DATA LOADER & HELPERS
+-- ============================================================================
+local CharacterIcons = {}
+local GlobalItemDB = {}
+local GlobalAvatarDB = {}
+local GlobalSwordDB = {} 
+local GlobalRankDB = {}
+
+-- Helper: Parse Number Suffix
+local function ParseAbbreviated(str)
+    if type(str) ~= "string" then return 0 end
+    local num = tonumber(string.match(str, "^[%d%.]+")) or 0
+    local suffix = string.match(str, "[%a]+$")
+    local mult = 1
+    if suffix == "K" then mult = 1e3
+    elseif suffix == "M" then mult = 1e6
+    elseif suffix == "B" then mult = 1e9
+    elseif suffix == "T" then mult = 1e12
+    elseif suffix == "Qd" then mult = 1e15
+    elseif suffix == "Qn" then mult = 1e18
+    end
+    return num * mult
 end
 
--- [REPLACED: Manual Load Logic replaced with simple Location DB loader]
-local function loadLocationDB()
-    if isfile(LocationDB) then
-        local content = readfile(LocationDB)
-        local data = DecodeJSON(content)
-        locationList = {}
-        locationNumber = {}
+-- Helper: Format Number
+local function FormatNumber(n)
+    if n >= 1e18 then return string.format("%.2fQn", n/1e18)
+    elseif n >= 1e15 then return string.format("%.2fQd", n/1e15)
+    elseif n >= 1e12 then return string.format("%.2fT", n/1e12)
+    elseif n >= 1e9 then return string.format("%.2fB", n/1e9)
+    elseif n >= 1e6 then return string.format("%.2fM", n/1e6)
+    elseif n >= 1e3 then return string.format("%.2fK", n/1e3)
+    else return tostring(n) end
+end
+
+local function LoadGameData()
+    -- Load Global Bosses
+    local successBoss, resultBoss = pcall(function() return require(ReplicatedStorage.Shared.Enemies["Global Bosses"]) end)
+    if successBoss and type(resultBoss) == "table" then
+        for bossName, data in pairs(resultBoss) do
+            if data.Map then GlobalBossDB[bossName] = data end 
+        end
+    end
+
+    -- Load Ranks
+    local successRanks, resultRanks = pcall(function() return require(ReplicatedStorage.Shared.Ranks) end)
+    if successRanks and type(resultRanks) == "table" then
+        GlobalRankDB = resultRanks
+    end
+
+    -- Load Other DBs
+    local s1, r1 = pcall(function() return require(ReplicatedStorage.Shared.CharacterIcons) end)
+    if s1 then CharacterIcons = r1 end
+    local s2, r2 = pcall(function() return require(ReplicatedStorage.Shared.Items) end)
+    if s2 then GlobalItemDB = r2 end
+    local s3, r3 = pcall(function() return require(ReplicatedStorage.Shared.Avatars) end)
+    if s3 then GlobalAvatarDB = r3 end
+    local s4, r4 = pcall(function() return require(ReplicatedStorage.Shared.Swords) end)
+    if s4 then GlobalSwordDB = r4 end
+end
+LoadGameData()
+
+-- ============================================================================
+--  ENEMY LIST & AUTO SELECT (FARMING)
+-- ============================================================================
+local UI = {} 
+local DifficultyRank = {["Very Easy"]=1, ["Easy"]=2, ["Medium"]=3, ["Hard"]=4, ["Insane"]=5, ["Boss"]=6, ["Godlike"]=7}
+
+local function resetEnemiesList()
+    isUpdatingUI = true
+    
+    if not getgenv().PlayerData or not getgenv().PlayerData.Map then ScanPlayerData() end
+    local PlayerData = getgenv().PlayerData
+    if PlayerData and PlayerData.Map == nil then
+        ScanPlayerData()
+        PlayerData = getgenv().PlayerData
+    end
+
+    local currentNames = {}
+    local nameSet = {}
+    local CurrentMapName = "Unknown"
+
+    if PlayerData and PlayerData.Map then
+        CurrentMapName = PlayerData.Map
+        local success, AllEnemiesDB = pcall(function() return require(game:GetService("ReplicatedStorage").Shared.Enemies) end)
+
+        if success and AllEnemiesDB and AllEnemiesDB[CurrentMapName] then
+            local MapEnemies = AllEnemiesDB[CurrentMapName]
+            for enemyName, enemyData in pairs(MapEnemies) do
+                if type(enemyName) == "string" and enemyName ~= "" and not nameSet[enemyName] then
+                    nameSet[enemyName] = true
+                    local diff = enemyData.Difficult or "Unknown"
+                    local hp = enemyData.Health or "?"
+                    local rank = DifficultyRank[diff] or 99
+                    
+                    local iconAsset = CharacterIcons[enemyName] or nil
+                    local processedDrops = {}
+                    if enemyData.Drops then processedDrops = table.clone(enemyData.Drops) end
+                    local dropIcons = {}
+
+                    for _, drop in ipairs(processedDrops) do
+                        if drop.Item then
+                            local iconFound = nil
+                            if drop.Type == "Avatar" then
+                                local avatarData = GlobalAvatarDB[drop.Item]
+                                if avatarData then iconFound = avatarData.Icon end
+                            elseif drop.Type == "Sword" then
+                                local swordData = GlobalSwordDB[drop.Item]
+                                if swordData then iconFound = swordData.Icon end
+                            else
+                                local itemData = GlobalItemDB[drop.Item]
+                                if itemData then iconFound = itemData.Icon end
+                            end
+                            if iconFound then table.insert(dropIcons, iconFound) end
+                        end
+                    end
+
+                    local descStr = "HP: " .. tostring(hp)
+                    table.insert(currentNames, {
+                        Title = enemyName .. " [" .. diff .. "]",
+                        Desc = descStr,
+                        Value = enemyName, 
+                        Rank = rank,
+                        Icon = iconAsset,
+                        Images = dropIcons 
+                    })
+                end
+            end
+        else
+            ScanPlayerData() 
+        end
         
-        for i, v in ipairs(data) do
-            if v.pos and v.number then
-                -- Parse Vector3 string if needed or load directly
-                local vec
-                if type(v.pos) == "string" then
-                    local x, y, z = v.pos:match("Vector3_%(([%d%.%-]+),%s*([%d%.%-]+),%s*([%d%.%-]+)%)")
-                    if x then vec = Vector3.new(tonumber(x), tonumber(y), tonumber(z)) end
+        table.sort(currentNames, function(a, b)
+            if a.Rank == b.Rank then return a.Value < b.Value end
+            return a.Rank < b.Rank 
+        end)
+        
+        table.clear(nameList)
+        for _, v in ipairs(currentNames) do table.insert(nameList, v) end
+        
+        if UI.EnemyDD then
+            pcall(function() UI.EnemyDD:Refresh(nameList) end)
+            local savedEnemy = MapSelections[CurrentMapName]
+            local foundItem = nil
+            if savedEnemy then
+                for _, item in ipairs(nameList) do if item.Value == savedEnemy then foundItem = item break end end
+            end
+            if foundItem then
+                UI.EnemyDD:Select(foundItem)
+                table.clear(targetList)
+                table.insert(targetList, foundItem.Value)
+                Notify("System", "Auto-Selected: " .. foundItem.Value, "check")
+            else
+                UI.EnemyDD:Select(nil)
+                table.clear(targetList)
+            end
+        end
+    end
+    task.wait(0.2)
+    isUpdatingUI = false
+end
+
+-- ============================================================================
+--  BRIDGENET & TELEPORT SYSTEM
+-- ============================================================================
+local function SmartTeleport(mapName)
+    if not mapName or mapName == "None" then return end
+    if getgenv().PlayerData and getgenv().PlayerData.Map == mapName then return end
+
+    isTransitioning = true
+    ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"Player", "Teleport", "Teleport", mapName, n = 4}, "\2"})
+    
+    repeat task.wait(0.5) until not isTransitioning
+    task.wait(1.5) 
+end
+
+ReplicatedStorage.BridgeNet2.dataRemoteEvent.OnClientEvent:Connect(function(data)
+    local events = data["\2"]
+    if not events then return end
+    for _, event in ipairs(events) do
+        if event[1] == "General" and event[2] == "Transition" and event[3] == "Teleport" then isTransitioning = true end
+        if event[1] == "Player" and event[2] == "Data" and event[3] == "MassUpdate" then
+            local uData = event[4]
+            if uData then
+                if uData.Power then
+                    if not getgenv().PlayerData then getgenv().PlayerData = {} end
+                    getgenv().PlayerData.Power = uData.Power
                 end
                 
-                if vec then
-                    table.insert(locationList, {number = v.number, pos = vec})
-                    table.insert(locationNumber, v.number)
+                if uData.Rank then
+                    if not getgenv().PlayerData then getgenv().PlayerData = {} end
+                    getgenv().PlayerData.Rank = uData.Rank
+                end
+
+                if uData.Map then
+                    isTransitioning = false
+                    if not getgenv().PlayerData then getgenv().PlayerData = {} end
+                    getgenv().PlayerData.Map = uData.Map
+                    task.spawn(function() task.wait(0.5) resetEnemiesList() end)
                 end
             end
         end
     end
-end
-
--- Boss Functions
-local function teleportToMap(map)
-    if not map or map == "None" then return end
-    isTele = true
-    local dataRemoteEvent = ReplicatedStorage.BridgeNet2.dataRemoteEvent
-    dataRemoteEvent:FireServer({{"Player", "Teleport", "Teleport", map, n = 4}, "\2"})
-    task.wait(5)
-    isTele = false
-end
-
-local function killBoss(bossName, index)
-    local EnemiesFolder = workspace:FindFirstChild("Client") and workspace.Client:FindFirstChild("Enemies")
-    if not EnemiesFolder then return end
-    
-    local Monster = EnemiesFolder:GetChildren()
-    for _, monster in pairs(Monster) do
-        if monster.Name ~= bossName then continue end
-        local head = monster:FindFirstChild("Head")
-        if not head then continue end
-        
-        local hrpToFeet = (hrp.Size.Y / 2) + (humanoid.HipHeight or 2)
-        local safeHeight = -2
-        local headPos = getPosition(head)
-        local targetPosition = headPos + Vector3.new(5, hrpToFeet + safeHeight, 5)        
-    
-        while inGamemode and bossList[index].kill and not Window.Destroyed do -- Safe Check
-            if not head or head.Transparency ~= 0 then break end
-            if hrp then hrp.CFrame = CFrame.new(targetPosition) end
-            
-            if getDistance(hrp, monster) > distance then return end
-            task.wait()
-        end
-    end
-end
-
-local function foundBoss(text) 
-    for i, boss in ipairs(bossList) do
-        if string.find(text, boss.name) and string.find(text, boss.map) then 
-            if boss.kill == true then 
-                return i
-            end
-        end
-    end
-    return false
-end
-
-TextChatService.MessageReceived:Connect(function(message)
-    if Window.Destroyed then return end -- Safe Check
-    if not message or foundBoss(message.Text) == false then return end
-    inGamemode = true
-    task.wait(0.5)
-    local bossIndex = foundBoss(message.Text)
-    if bossIndex then
-        teleportToMap(bossList[bossIndex].map)
-        killBoss(bossList[bossIndex].name, bossIndex)
-        teleportToMap(teleportBackMap)
-    end
-    inGamemode = false
 end)
 
--- Farm Functions
-local function resetEnemiesList()
-    local EnemiesFolder = workspace:FindFirstChild("Client") and workspace.Client:FindFirstChild("Enemies")
-    if not EnemiesFolder then return end
-    
-    local monsters = EnemiesFolder:GetChildren()
-    local nameSet = {}
-    table.clear(nameList)
-    table.clear(monsterList)
-    
-    for _, monster in pairs(monsters) do
-        if monster.Name == "" or not monster.Name then continue end
-        local nameText = monster.Name
-        
-        if not monster:FindFirstChild("Head") or monster.Head.Transparency ~= 0 then continue end
-        if not monster:FindFirstChild("HumanoidRootPart") or getDistance(hrp, monster.HumanoidRootPart) >= distance then continue end
-
-        if not nameSet[nameText] then
-            table.insert(monsterList, nameText)
-            nameSet[nameText] = true
-            table.insert(nameList, nameText)
-        end
-    end
-    -- No manual save needed here, handled by UI refresh
-end
-
+-- ============================================================================
+--  FARMING LOGIC
+-- ============================================================================
 local function kill(monster)
     local head = monster:FindFirstChild("Head")
     if not head then return end
     local hrpToFeet = (hrp.Size.Y / 2) + (humanoid.HipHeight or 2)
-    local safeHeight = -2
-    local headPos = getPosition(head)
-    local targetPosition = headPos + Vector3.new(5, hrpToFeet + safeHeight, 5)        
+    local targetPosition = getPosition(head) + Vector3.new(5, hrpToFeet - 2, 5)        
     
     if hrp then hrp.CFrame = CFrame.new(targetPosition) end
 
     local stillTarget = false
     for _, target in pairs(targetList) do
-        if monster.Name == target then stillTarget = true break end
-    end   
+        local mName = monster:GetAttribute("CustomEnemyType") or monster:GetAttribute("ID") or monster.Name
+        if mName == target or monster.Name == target then stillTarget = true break end
+    end      
     
-    while isFarm1 and stillTarget and inGamemode == false and not Window.Destroyed do -- Safe Check
+    while isFarm1 and stillTarget and not isGlobalBossActive and not isTransitioning and not Window.Destroyed do 
         if not head or head.Transparency ~= 0 then break end
         if hrp then hrp.CFrame = CFrame.new(targetPosition) end
-        
         if getDistance(hrp, monster) > distance then return end
         
         stillTarget = false
         for _, target in pairs(targetList) do
-            if monster.Name == target then stillTarget = true break end
+            local mName = monster:GetAttribute("CustomEnemyType") or monster:GetAttribute("ID") or monster.Name
+            if mName == target or monster.Name == target then stillTarget = true break end
         end
         task.wait()
     end
 end
 
-local function kill2(monster)
-    local head = monster:FindFirstChild("Head")
-    if not head then return end
-    local hrpToFeet = (hrp.Size.Y / 2) + (humanoid.HipHeight or 2)
-    local safeHeight = -2
-    local headPos = getPosition(head)
-    local targetPosition = headPos + Vector3.new(5, hrpToFeet + safeHeight, 5)        
-    
-    if hrp then hrp.CFrame = CFrame.new(targetPosition) end
-    task.wait(farm2Delay)
-end
-
 local function check()
     local EnemiesFolder = workspace:FindFirstChild("Client") and workspace.Client:FindFirstChild("Enemies")
     if not EnemiesFolder then return end
-    local monsters = EnemiesFolder:GetChildren()
     
-    for _, monster in pairs(monsters) do
-        if not isFarm1 and not isFarm2 then break end
-        if inGamemode then break end
-        if not monster:FindFirstChild("Head") then continue end
-        local Head = monster.Head
-        if Head.Transparency ~= 0 then continue end
+    for _, monster in pairs(EnemiesFolder:GetChildren()) do
+        if isTransitioning or isGlobalBossActive then break end
+        if not monster:FindFirstChild("Head") or monster.Head.Transparency ~= 0 then continue end
         if not hrp then task.wait() continue end
-        
-        local dis = getDistance(hrp, monster)
-        if dis >= distance or dis <= attackRange then continue end
+        if getDistance(hrp, monster) >= distance then continue end
 
-        if monster.Name == "" or not monster.Name then continue end
-        local nameText = monster.Name
-
+        local mName = monster:GetAttribute("CustomEnemyType") or monster:GetAttribute("ID") or monster.Name
         for _, target in ipairs(targetList) do
-            if (target == nameText) then
-                if inGamemode then break end
-                if isFarm1 then kill(monster) end
-                if isFarm2 then kill2(monster) end
+            if (target == mName or target == monster.Name) then
+                kill(monster)
                 break
             end
         end
     end
 end
 
--- [LOOP: FARM CHECK]
 task.spawn(function()
     while not Window.Destroyed do
-        if (isFarm1 == false and isFarm2 == false) or inGamemode or isTele == true then 
+        if (isFarm1 == false) or isGlobalBossActive or isTransitioning == true then 
             task.wait(1)
             continue
         end
@@ -419,758 +460,480 @@ task.spawn(function()
     end
 end)
 
--- Location Functions
-local function teleportTo(targetNumber)
-    for _, location in ipairs(locationList) do
-        if (location.number == targetNumber) then
-            local Pos = location.pos
-            if (getPosition(hrp) - Pos).Magnitude > distance then return end
-            
-            local targetPosition = Pos        
-            if inGamemode or isTele then return end 
-            if hrp then hrp.CFrame = CFrame.new(targetPosition) end
-            break
-        end
-    end
-    task.wait(repeatTime)
-end
+-- ============================================================================
+--  BOSS LOGIC
+-- ============================================================================
 
-local function autoTeleportFarmLoop()
-    while isTeleportFarm and not Window.Destroyed do -- Safe Check
-        if inGamemode or isTele then 
-            task.wait(1)
-            continue 
-        end
-        for _, location in ipairs(locationTargetList) do
-            if not isTeleportFarm or Window.Destroyed then break end -- Safe Check
-            teleportTo(location)
-        end
-        task.wait()
-    end
-end
-
-local function addLocationFunc()
-    if not hrp then return end
-    local Position = hrp.Position
-    local size = #locationList
-    local name = "Location #" .. tostring(size + 1)
+local function ExecuteKillBoss(bossName)
+    local EnemiesFolder = workspace:FindFirstChild("Client") and workspace.Client:FindFirstChild("Enemies")
+    if not EnemiesFolder then return end
     
-    table.insert(locationList, {number = name, pos = Position})
-    
-    local saveList = {}
-    for _, v in ipairs(locationList) do
-        table.insert(saveList, {
-            number = v.number,
-            pos = string.format("Vector3_(%f, %f, %f)", v.pos.X, v.pos.Y, v.pos.Z)
-        })
-    end
-    
-    -- [SAVING] Manual save for locations to LocationDB
-    if writefile then
-        writefile(LocationDB, HttpService:JSONEncode(saveList))
-    end
-    
-    table.clear(locationNumber)
-    for _, l in ipairs(locationList) do
-        table.insert(locationNumber, l.number)
-    end
-end
-
--- Power Functions
-local function changePower(name, value)
-    for _, power in pairs(powerList) do
-        if power.name == name then 
-            power.auto = value
-            return
-        end
-    end
-end
-
--- [LOOP: POWER ROLL]
-task.spawn(function()
-    while not Window.Destroyed do
-        for _, power in pairs(powerList) do
-            if power.auto == true then
-                local name = power.name
-                local dataRemoteEvent = ReplicatedStorage.BridgeNet2.dataRemoteEvent
-                dataRemoteEvent:FireServer({{"General", "Gacha", "Roll", name, {}, n = 10}, "\2"})
-            end
+    local targetBoss = nil
+    local searchTime = 0
+    repeat 
+        for _, mob in pairs(EnemiesFolder:GetChildren()) do
+            if mob.Name == bossName then targetBoss = mob break end
         end
         task.wait(0.5)
-    end
-end)
+        searchTime = searchTime + 0.5
+    until targetBoss or searchTime > 10 
+    
+    if targetBoss then
+        l:Notify({Title="Global Boss", Content="Found " .. bossName .. "! Killing...", Icon="swords"})
+        local head = targetBoss:FindFirstChild("Head")
+        
+        while isGlobalBossActive and targetBoss and targetBoss.Parent and head and head.Transparency == 0 do
+            if not hrp then break end
+            
+            if not isAutoBoss then 
+                isGlobalBossActive = false 
+                break 
+            end
 
--- [LOOP: RAID JOIN]
-task.spawn(function()
-    while not Window.Destroyed do
-        if isAutoJoinRaid then
-            local dataRemoteEvent = ReplicatedStorage.BridgeNet2.dataRemoteEvent
-            dataRemoteEvent:FireServer({{"Gamemodes", "Raid", "Join", n = 3}, "\2"})
+            local targetPos = getPosition(head) + Vector3.new(0, 5, 0)
+            hrp.CFrame = CFrame.new(targetPos)
+            task.wait()
+            if not targetBoss:FindFirstChild("Head") then break end
         end
-        task.wait(5)
+        
+        if isGlobalBossActive then 
+            l:Notify({Title="Global Boss", Content="Defeated! Returning...", Icon="check"})
+            task.wait(1)
+            if savedPreviousMap then SmartTeleport(savedPreviousMap) savedPreviousMap = nil end
+        end
+        isGlobalBossActive = false 
+    else
+        l:Notify({Title="Global Boss", Content="Not Found / Despawned", Icon="x"})
+        isGlobalBossActive = false
+    end
+end
+
+local function TriggerGlobalBoss(bossName, mapName)
+    if isGlobalBossActive then return end
+    if getgenv().PlayerData and getgenv().PlayerData.Map then savedPreviousMap = getgenv().PlayerData.Map else savedPreviousMap = nil end
+    isGlobalBossActive = true
+    SmartTeleport(mapName)
+    ExecuteKillBoss(bossName)
+end
+
+TextChatService.MessageReceived:Connect(function(message)
+    if Window.Destroyed then return end
+    if not isAutoBoss then return end 
+
+    local text = message.Text
+    for _, bossName in pairs(selectedBosses) do
+        local data = GlobalBossDB[bossName]
+        if data and data.Map then
+            if string.find(text, bossName) and string.find(text, data.Map) then
+                TriggerGlobalBoss(bossName, data.Map)
+                break 
+            end
+        end
     end
 end)
 
-local function killDungeon(monster)
+-- ============================================================================
+--  GAMEMODES: TRIAL & RAID LOGIC
+-- ============================================================================
+
+-- [1. DETEKSI WAVE REAL-TIME: TRIAL & RAID]
+task.spawn(function()
+    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+    
+    local function UpdateWaveValue()
+        local success, hud = pcall(function() return playerGui:FindFirstChild("Interface") and playerGui.Interface:FindFirstChild("HUD") end)
+        if not success or not hud then return end
+        
+        -- > Update Wave Trial
+        local trialNode = hud:FindFirstChild("Gamemodes") and hud.Gamemodes:FindFirstChild("TrialEasy")
+        local trialWaveLabel = trialNode and trialNode:FindFirstChild("Background") and trialNode.Background:FindFirstChild("Wave")
+        if trialWaveLabel then
+            local txt = trialWaveLabel.Text
+            local num = string.match(txt, "%d+")
+            if num then waveTrial = tonumber(num) end
+        end
+
+        -- > Update Wave Raid (NEW)
+        local raidNode = hud:FindFirstChild("Gamemodes") and hud.Gamemodes:FindFirstChild("Raid")
+        local raidWaveLabel = raidNode and raidNode:FindFirstChild("Background") and raidNode.Background:FindFirstChild("Wave")
+        if raidWaveLabel then
+            local txt = raidWaveLabel.Text
+            local num = string.match(txt, "%d+")
+            if num then waveRaid = tonumber(num) end
+        end
+    end
+
+    while not Window.Destroyed do
+        UpdateWaveValue()
+        task.wait(2)
+    end
+end)
+
+-- [2. FUNGSI KILL GENERIC]
+local function killGamemodeGeneric(monster, stopConditionFunc)
     local head = monster:FindFirstChild("Head")
     if not head then return end
     local hrpToFeet = (hrp.Size.Y / 2) + (humanoid.HipHeight or 2)
-    local safeHeight = -2
-    local headPos = getPosition(head)
-    local targetPosition = headPos + Vector3.new(5, hrpToFeet + safeHeight, 5)        
+    local targetPosition = getPosition(head) + Vector3.new(5, hrpToFeet - 2, 5)        
+    
+    while not isGlobalBossActive and not Window.Destroyed do 
+        -- Cek Toggle
+        if not stopConditionFunc() then break end
 
-    while isTrial and isTele == false and inGamemode and not Window.Destroyed do -- Safe Check
         if hrp then hrp.CFrame = CFrame.new(targetPosition) end
         if not head or head.Transparency ~= 0 then break end
         if getDistance(hrp, monster) > distance then return end
+        
         task.wait()
     end
 end
 
--- Trial Wave Gui Detection
-task.spawn(function()
-    local success, trialGui = pcall(function() return game:GetService("StarterGui").Interface.HUD.Gamemodes.TrialEasy.Background.Wave end)
-    if success and trialGui then
-        trialGui:GetPropertyChangedSignal("Text"):Connect(function()
-            waveTrial = tonumber((string.gsub(trialGui.Text, "Wave ", "")))
-        end)
-    end
-end)
-
+-- ============================================================================
+--  TRIAL LOGIC SPECIFIC
+-- ============================================================================
 local function checkTrial() 
-    while waveDungeon <= targetWaveDungeon 
-     and waveRaid <= targetWaveRaid 
-     and waveDef <= targetWaveDef 
-     and waveTrial <= targetWaveTrial and
-     isTele == false and inGamemode and not Window.Destroyed do -- Safe Check
-        
+    while isTrial and not isGlobalBossActive and not Window.Destroyed do
+        if waveTrial >= targetWaveTrial then
+            isTrial = false
+            Notify("Trial", "Target Wave " .. waveTrial .. " Reached!", "check")
+            task.wait(0.5)
+            if savedPreviousMap and savedPreviousMap ~= "None" and savedPreviousMap ~= "TrialEasy" then
+                SmartTeleport(savedPreviousMap)
+            else
+                SmartTeleport("Trial Lobby")
+            end
+            return
+        end
+
         local EnemiesFolder = workspace:FindFirstChild("Client") and workspace.Client:FindFirstChild("Enemies")
         if EnemiesFolder then
-            local monsters = EnemiesFolder:GetChildren()
-            for _, monster in pairs(monsters) do
-                local Head = monster:FindFirstChild("Head")
-                if not Head or Head.Transparency ~= 0 then continue end
-                if not hrp then task.wait() continue end
+            for _, monster in pairs(EnemiesFolder:GetChildren()) do
+                if not monster:FindFirstChild("Head") or monster.Head.Transparency ~= 0 then continue end
                 
-                local dis = getDistance(hrp, monster)
-                if dis >= distance or dis <= attackRange then continue end
-                killDungeon(monster)
-                if not inGamemode or isTele or Window.Destroyed then break end -- Safe Check
+                killGamemodeGeneric(monster, function() 
+                    return isTrial and waveTrial < targetWaveTrial 
+                end)
+                
+                if isGlobalBossActive or Window.Destroyed or waveTrial >= targetWaveTrial then break end 
                 task.wait()
             end
         end
-        
-        if waveTrial >= targetWaveTrial then
-            if (waveTrial > targetWaveTrial) then
-                teleportToMap(teleportBackMap)
-                return
-            else
-                task.wait(2)
-                if EnemiesFolder and #EnemiesFolder:GetChildren() == 0 then 
-                    teleportToMap(teleportBackMap)
-                    return
-                end
-            end
-        end 
-        task.wait()
+        task.wait(0.5)
     end
 end
 
 local function joinDungeon()
     local isTargetTrial = false
-    currentTime = os.date("*t")
+    local currentTime = os.date("*t")
+    
     for i, trial in pairs(trialList) do
-        if trialList[i].time == currentTime.min or trialList[i].time + 30 == currentTime.min then 
-            isTargetTrial = trial.name
-            break
+        if trial.time == currentTime.min or (trial.time + 30) == currentTime.min then 
+            isTargetTrial = trial.name 
+            break 
         end
     end
+
     if not isTargetTrial then return end
-    
-    inGamemode = true
+
+    local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
+    if currentMap and currentMap ~= "TrialEasy" and currentMap ~= "None" then savedPreviousMap = currentMap
+    elseif not savedPreviousMap then savedPreviousMap = "Trial Lobby" end
+
+    Notify("Trial", "Auto Joining Trial...", "hourglass")
     task.wait(1)
-    local dataRemoteEvent = ReplicatedStorage.BridgeNet2.dataRemoteEvent
-    dataRemoteEvent:FireServer({{"Gamemodes", isTargetTrial, "Join", n = 3}, "\2"})
+    for i=1, 5 do
+        ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"Gamemodes", isTargetTrial, "Join", n = 3}, "\2"})
+        task.wait(0.2)
+    end
     task.wait(8)
     checkTrial()
-    inGamemode = false
 end
 
 local function autoFarmDungeon()
-    while isTrial and not Window.Destroyed do -- Safe Check
-        if not inGamemode then
-            waveTrial = 0
-            joinDungeon()
-        end
-        task.wait(1)    
+    while isTrial and not Window.Destroyed do 
+        local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
+        if currentMap == "TrialEasy" then checkTrial()
+        elseif not isGlobalBossActive then joinDungeon() end
+        task.wait(5)    
     end
 end
 
--- [LOOP: STRONGER STAR OPEN]
-task.spawn(function()
-    while not Window.Destroyed do
-        if targetStar and targetStar ~= "None" then
-            local dataRemoteEvent = ReplicatedStorage.BridgeNet2.dataRemoteEvent
-            dataRemoteEvent:FireServer({{"General", "Stars", "Open", targetStar, 10, n = 10}, "\2"})
+-- ============================================================================
+--  RAID LOGIC SPECIFIC (NEW)
+-- ============================================================================
+local function checkRaid() 
+    while isRaid and not isGlobalBossActive and not Window.Destroyed do
+        -- Cek Wave Target
+        if waveRaid >= targetWaveRaid then
+            isRaid = false
+            Notify("Raid", "Target Wave " .. waveRaid .. " Reached!", "check")
+            task.wait(0.5)
+            if savedPreviousMap and savedPreviousMap ~= "None" and savedPreviousMap ~= "Raid" then
+                SmartTeleport(savedPreviousMap)
+            else
+                SmartTeleport("Raid Lobby") -- Atau map lobby yang sesuai
+            end
+            return
         end
+
+        local EnemiesFolder = workspace:FindFirstChild("Client") and workspace.Client:FindFirstChild("Enemies")
+        if EnemiesFolder then
+            for _, monster in pairs(EnemiesFolder:GetChildren()) do
+                if not monster:FindFirstChild("Head") or monster.Head.Transparency ~= 0 then continue end
+                
+                killGamemodeGeneric(monster, function() 
+                    return isRaid and waveRaid < targetWaveRaid 
+                end)
+                
+                if isGlobalBossActive or Window.Destroyed or waveRaid >= targetWaveRaid then break end 
+                task.wait()
+            end
+        end
+        task.wait(0.5)
+    end
+end
+
+local function joinRaid()
+    -- Cek Waktu Raid (Jika diperlukan, saat ini menggunakan raidJoinList)
+    local isTargetRaid = false
+    local currentTime = os.date("*t")
+    
+    -- Logika cek waktu sederhana (atau jika Raid selalu buka, bisa di bypass)
+    for i, raid in pairs(raidJoinList) do
+        isTargetRaid = raid.name
+    end
+    -- Fallback: Jika tidak ada di list waktu, coba join langsung (opsional)
+    -- isTargetRaid = "Raid" 
+
+    if not isTargetRaid then return end
+
+    local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
+    if currentMap and currentMap ~= "Raid" and currentMap ~= "None" then savedPreviousMap = currentMap
+    elseif not savedPreviousMap then savedPreviousMap = "Trial Lobby" end
+
+    Notify("Raid", "Auto Joining Raid...", "hourglass")
+    task.wait(1)
+    for i=1, 5 do
+        -- [RAID JOIN REMOTE]
+        ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"Gamemodes", "Raid", "Join", n = 3}, "\2"})
         task.wait(0.2)
     end
-end)
+    task.wait(8)
+    checkRaid()
+end
 
--- [LOOP: STRONGER MISC]
+local function autoFarmRaid()
+    while isRaid and not Window.Destroyed do 
+        local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
+        if currentMap == "Raid" then 
+            checkRaid()
+        elseif not isGlobalBossActive then 
+            joinRaid() 
+        end
+        task.wait(5)    
+    end
+end
+
+
+-- Powers & Stronger Loops
+local function changePower(name, value) for _, power in pairs(powerList) do if power.name == name then power.auto = value return end end end
 task.spawn(function()
     while not Window.Destroyed do
-        local dataRemoteEvent = ReplicatedStorage.BridgeNet2.dataRemoteEvent
-        if isRankUp == true then
-            dataRemoteEvent:FireServer({{"General", "RankUp", "RankUp", n = 10}, "\2"}) 
-        end
-        if isAutoClaimExpedition == true then
-            dataRemoteEvent:FireServer({{"General", "HeroesExpedition", "Claim", n = 3}, "\2"}) 
-        end
-        if expeditionTarget and expeditionTarget ~= "None" then
-            dataRemoteEvent:FireServer({{"General", "HeroesExpedition", "Start", expeditionTarget, n = 4}, "\2"})
-        end
-        task.wait(5)
+        for _, power in pairs(powerList) do if power.auto == true then ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "Gacha", "Roll", power.name, {}, n = 10}, "\2"}) end end
+        task.wait(0.5)
     end
 end)
-
--- Populate Static Lists
-table.insert(powerList, {name = "Hero Rank", auto = false})
-table.insert(powerList, {name = "Ninja Rank", auto = false})
-table.insert(powerList, {name = "Haki", auto = false})
-table.insert(powerList, {name = "Passive", auto = false})
-table.insert(powerList, {name = "Clan", auto = false})
-
-bossList = {
-    {name = "Sea King", map = "XYZ Metropolis", kill = false},
-    {name = "Cosmic Garo", map = "XYZ Metropolis", kill = false},
-    {name = "Itachu", map = "Ninja Village", kill = false},
-    {name = "Nanko", map = "Ninja Village", kill = false},
-    {name = "Luciu", map = "Forgotten Shore", kill = false},
-    {name = "Hawkeye", map = "Forgotten Shore", kill = false},
-    {name = "Hantengo", map = "Slayer Forest", kill = false},
-    {name = "Kokushibe", map = "Slayer Forest", kill = false}
-}
-
-trialList = {
-    {name = "TrialEasy", time = 15}
-}
-
--- Initialize Data (Locations only, Flags handled by UI)
-loadLocationDB()
-
--- ============================================================================
---  UI CONSTRUCTION
--- ============================================================================
-
--- [PROFILES]
-local BaseProfile = {
-    Banner = "rbxassetid://124762019485618", 
-    Avatar = "rbxassetid://84366761557806", 
-    Status = true,
-    Badges = {
-        {
-            Icon = "geist:logo-discord", 
-            Callback = function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Copied!", "geist:logo-discord") end
-        },
-        {
-            Icon = "youtube", 
-            Callback = function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Copied!", "youtube") end
-        }
-    }
-}
-
-local function MakeProfile(data)
-    local p = table.clone(BaseProfile)
-    for k, v in pairs(data or {}) do 
-        p[k] = v 
-    end
-    return p
-end
-
-Window:Tab({
-    Profile = MakeProfile({ Title = "ANHub Script", Desc = "Anime Advanced" }),
-    SidebarProfile = true
-})
-
-do
-    Window:Tag({ Title = "v" .. l.Version, Icon = "github", Color = Color3.fromHex("#ff0000") });
-end;
-
--- [TAB: MAIN FEATURE (ALL HHH FEATURES)]
-local MainTab = Window:Tab({
-    Title = "Main Feature",
-    Icon = "swords", 
-    Profile = MakeProfile({ Title = "Game Feature", Desc = "Anime Advanced" }),
-    SidebarProfile = false
-});
-
--- Category System Logic
-local FM_Categories = {}
-local FM_CategoryDescriptions = {
-    ["Farm"] = "Enemies Farming",
-    ["Locations"] = "Location Manager",
-    ["Teleport"] = "Map Teleportation",
-    ["Bosses"] = "Boss Auto-Kill",
-    ["Trial"] = "Dungeon & Trials",
-    ["Powers"] = "Stat Upgrades",
-    ["Stronger"] = "Progression",
-    ["Settings"] = "Configuration" -- Added Settings to desc
-}
-
-local function FM_GetElementFrame(elem)
-    local f = rawget(elem, "ElementFrame") or (elem.UIElements and elem.UIElements.Main) or rawget(elem, "GroupFrame") or rawget(elem, "ParagraphFrame")
-    return f
-end
-local function FM_Add(cat, elem)
-    if not FM_Categories[cat] then FM_Categories[cat] = {} end
-    table.insert(FM_Categories[cat], elem)
-    local frame = FM_GetElementFrame(elem)
-    if frame then frame.Visible = false end
-    return elem
-end
-local function FM_UpdateTabProfile(selected)
-    local desc = FM_CategoryDescriptions[selected] or ""
-    if MainTab.UIElements.ContainerFrameCanvas then
-        local header = MainTab.UIElements.ContainerFrameCanvas:FindFirstChild("ProfileHeader") or MainTab.UIElements.ContainerFrame:FindFirstChild("ProfileHeader")
-        if header then
-            local tc = header:FindFirstChild("TextContainer")
-            if tc then
-                local labels = tc:GetChildren()
-                for _, c in ipairs(labels) do
-                    if c:IsA("TextLabel") and c.LayoutOrder == 1 then c.Text = selected end
-                    if c:IsA("TextLabel") and c.LayoutOrder == 2 then c.Text = desc end
+task.spawn(function()
+    while not Window.Destroyed do
+        if targetStar and targetStar ~= "None" then ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "Stars", "Open", targetStar, 10, n = 10}, "\2"}) end
+        if isRankUp == true and getgenv().PlayerData and GlobalRankDB then
+            local pData = getgenv().PlayerData
+            local nextRank = (pData.Rank or 0) + 1
+            local nextData = GlobalRankDB[nextRank]
+            if nextData then
+                local reqPower = ParseAbbreviated(nextData.Power)
+                local curPower = pData.Power or 0 
+                if curPower >= reqPower then
+                    ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "RankUp", "RankUp", n = 10}, "\2"})
                 end
             end
         end
+        if isAutoClaimExpedition == true then ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "HeroesExpedition", "Claim", n = 3}, "\2"}) end
+        if expeditionTarget and expeditionTarget ~= "None" then ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "HeroesExpedition", "Start", expeditionTarget, n = 4}, "\2"}) end
+        task.wait(0.5) 
     end
-end
-local function FM_OnChange(selected)
-    for name, elems in pairs(FM_Categories) do
-        local vis = (name == selected)
-        for _, e in ipairs(elems) do
-            local f = FM_GetElementFrame(e)
-            if f then f.Visible = vis end
-        end
-    end
-    pcall(function() FM_UpdateTabProfile(selected) end)
-end
+end)
+
+-- ============================================================================
+--  UI INTERFACE
+-- ============================================================================
+
+local BaseProfile = {Banner="rbxassetid://124762019485618", Avatar="rbxassetid://84366761557806", Status=true, Badges={{Icon="geist:logo-discord", Callback=function() setclipboard("https://discord.gg/cy6uMRmeZ") Notify("Discord", "Copied!", "geist:logo-discord") end}, {Icon="youtube", Callback=function() setclipboard("https://www.youtube.com/@ANHubRoblox") Notify("YouTube", "Copied!", "youtube") end}}}
+local function MakeProfile(data) local p=table.clone(BaseProfile); for k,v in pairs(data or {}) do p[k]=v end return p end
+
+Window:Tab({Profile = MakeProfile({ Title = "ANHub Script", Desc = "Anime Advanced" }), SidebarProfile = true})
+Window:Tag({ Title = "v" .. l.Version, Icon = "github", Color = Color3.fromHex("#ff0000") });
+
+local MainTab = Window:Tab({Title = "Main Feature", Icon = "swords", Profile = MakeProfile({Title = "Game Feature", Desc = "Anime Advanced"}), SidebarProfile = false})
+
+local FM_Categories = {}
+local function FM_Add(cat, elem) if not FM_Categories[cat] then FM_Categories[cat]={} end table.insert(FM_Categories[cat], elem) local f=rawget(elem,"ElementFrame") or (elem.UIElements and elem.UIElements.Main) if f then f.Visible=false end return elem end
+local function FM_OnChange(selected) for name, elems in pairs(FM_Categories) do local vis=(name==selected) for _, e in ipairs(elems) do local f=rawget(e,"ElementFrame") or (e.UIElements and e.UIElements.Main) if f then f.Visible=vis end end end end
 
 local FM_Category = MainTab:Category({
-    Title = "Select Category",
-    Default = "Farm",
+    Title = "Select Category", Default = "Farm",
     Options = {
         {Title="Farm", Icon="sword"},
-        {Title="Locations", Icon="map-pin"},
-        {Title="Teleport", Icon="plane"},
-        {Title="Bosses", Icon="skull"},
-        {Title="Trial", Icon="hourglass"},
-        {Title="Powers", Icon="zap"},
+        {Title="Bosses", Icon="skull"}, 
+        {Title="Gamemodes", Icon="hourglass"}, 
+        {Title="Powers", Icon="zap"}, 
+        {Title="Upgrade Rank", Icon="chevrons-up"}, 
         {Title="Stronger", Icon="star"}
-        -- Settings will be handled by a separate Tab for ConfigManager consistency like Yuhu
     },
     Callback = FM_OnChange
 })
-
--- Fix Sticky Category
-if FM_Category and FM_Category.ElementFrame and MainTab.UIElements.ContainerFrameCanvas then
-    local CategoryFrame = FM_Category.ElementFrame
-    local Canvas = MainTab.UIElements.ContainerFrameCanvas
-    local ScrollFrame = MainTab.UIElements.ContainerFrame
-    
-    CategoryFrame.Parent = Canvas
-    local startY = ScrollFrame.Position.Y.Offset
-    CategoryFrame.Position = UDim2.new(0, 0, 0, startY)
-    
-    local catHeight = CategoryFrame.Size.Y.Offset
-    local newY = startY + catHeight
-    
-    ScrollFrame.Position = UDim2.new(0, 0, 0, newY)
-    ScrollFrame.Size = UDim2.new(1, 0, 1, -newY)
+if FM_Category.ElementFrame then 
+    FM_Category.ElementFrame.Parent = MainTab.UIElements.ContainerFrameCanvas 
+    FM_Category.ElementFrame.Position = UDim2.new(0,0,0, MainTab.UIElements.ContainerFrame.Position.Y.Offset)
+    MainTab.UIElements.ContainerFrame.Position = UDim2.new(0,0,0, MainTab.UIElements.ContainerFrame.Position.Y.Offset + FM_Category.ElementFrame.Size.Y.Offset)
 end
-
 MainTab:Space({Columns=1})
 
--- ==================== CATEGORY: FARM ====================
-local EnemyDropdown = MainTab:Dropdown({
-    Title = "Select Enemies",
-    Values = nameList,
-    Multi = true,
-    Value = {},
-    SearchBarEnabled = true,
-    Flag = "TargetList_Cfg", -- [ADDED FLAG]
-    Callback = function(selectedValues)
-        table.clear(targetList)
-        if type(selectedValues) == "table" then
-            for _, item in ipairs(selectedValues) do
-                local name = type(item) == "table" and item.Title or item
-                table.insert(targetList, name)
-            end
-        end
-    end
-})
-FM_Add("Farm", EnemyDropdown)
-
-local ResetEnemiesBtn = MainTab:Button({
-    Title = "Reset Enemies List",
-    Desc = "Update list from current map",
-    Icon = "refresh-cw",
-    Callback = function() 
-        resetEnemiesList()
-        local newValues = {}
-        for _, v in ipairs(nameList) do table.insert(newValues, v) end
-        EnemyDropdown:Refresh(newValues)
-        Notify("Farm", "Enemies list reset!", "check")
-    end
-})
-FM_Add("Farm", ResetEnemiesBtn)
-
-local Farm1Toggle = MainTab:Toggle({
-    Title = "Auto Kill Selected (Method 1)",
-    Value = false,
-    Flag = "Farm1_Cfg", -- [ADDED FLAG]
-    Callback = function(v) isFarm1 = v end
-})
-FM_Add("Farm", Farm1Toggle)
-
-local Farm2Toggle = MainTab:Toggle({
-    Title = "Auto Kill Selected (Method 2)",
-    Desc = "Only for 1-hit kill (Instant)",
-    Value = false,
-    Flag = "Farm2_Cfg", -- [ADDED FLAG]
-    Callback = function(v) isFarm2 = v end
-})
-FM_Add("Farm", Farm2Toggle)
-
-local FarmDelayInput = MainTab:Input({
-    Title = "Teleport Delay (Sec)",
-    Value = tostring(farm2Delay),
-    Flag = "FarmDelay_Cfg", -- [ADDED FLAG]
+-- FARM
+UI.EnemyDD = MainTab:Dropdown({
+    Title = "Select Enemies", Values = nameList, Multi = false, AllowNone = true, Value = nil, Flag = "TargetEnemies_Cfg",
     Callback = function(v) 
-        farm2Delay = tonumber(v) or 0.5 
-    end
-})
-FM_Add("Farm", FarmDelayInput)
-
-
--- ==================== CATEGORY: LOCATIONS ====================
-local LocDropdown = MainTab:Dropdown({
-    Title = "Select Locations",
-    Values = locationNumber,
-    Multi = true,
-    Value = {},
-    Flag = "LocTarget_Cfg", -- [ADDED FLAG]
-    Callback = function(selectedValues)
-        table.clear(locationTargetList)
-        if type(selectedValues) == "table" then
-            for _, item in ipairs(selectedValues) do
-                local name = type(item) == "table" and item.Title or item
-                table.insert(locationTargetList, name)
-            end
-        end
-    end
-})
-FM_Add("Locations", LocDropdown)
-
-local AddLocBtn = MainTab:Button({
-    Title = "Add Current Position",
-    Icon = "plus",
-    Callback = function()
-        addLocationFunc()
-        LocDropdown:Refresh(locationNumber)
-        Notify("Location", "Position Added!", "map-pin")
-    end
-})
-FM_Add("Locations", AddLocBtn)
-
-local AutoTeleToggle = MainTab:Toggle({
-    Title = "Auto Teleport Farm",
-    Desc = "Loop through selected locations",
-    Value = false,
-    Flag = "AutoTeleLoc_Cfg", -- [ADDED FLAG]
-    Callback = function(v)
-        isTeleportFarm = v
-        if v then task.spawn(autoTeleportFarmLoop) end
-    end
-})
-FM_Add("Locations", AutoTeleToggle)
-
-local LocSpeedInput = MainTab:Input({
-    Title = "Location Delay",
-    Value = "2",
-    Flag = "LocDelay_Cfg", -- [ADDED FLAG]
-    Callback = function(v) repeatTime = tonumber(v) or 2 end
-})
-FM_Add("Locations", LocSpeedInput)
-
-local ClearLocBtn = MainTab:Button({
-    Title = "Clear All Locations",
-    Icon = "trash",
-    Callback = function()
-        table.clear(locationList)
-        table.clear(locationNumber)
-        LocDropdown:Refresh({})
-        if writefile then
-            writefile(LocationDB, "[]") -- Clear JSON
-        end
-        Notify("Location", "Cleared all data", "trash")
-    end
-})
-FM_Add("Locations", ClearLocBtn)
-
-
--- ==================== CATEGORY: TELEPORT ====================
--- Populate map list dynamically
-local MapList = {"None"}
-task.spawn(function()
-    local added = {}
-    for _, boss in ipairs(bossList) do
-        if not added[boss.map] then
-            table.insert(MapList, boss.map)
-            added[boss.map] = true
-        end
-    end
-end)
-
-local BackMapDropdown = MainTab:Dropdown({
-    Title = "Auto Teleport Back Map",
-    Desc = "Where to return after Boss/Dungeon",
-    Values = MapList,
-    Value = "None",
-    Flag = "BackMap_Cfg", -- [ADDED FLAG]
-    Callback = function(v)
-        teleportBackMap = (type(v) == "table" and v.Title) or v
-    end
-})
-FM_Add("Teleport", BackMapDropdown)
-
--- ==================== CATEGORY: BOSSES ====================
-FM_Add("Bosses", MainTab:Paragraph({Title = "Info", Desc = "Turn ON before boss spawns!"}))
-
-for i, boss in ipairs(bossList) do
-    local tgl = MainTab:Toggle({
-        Title = boss.map .. " - " .. boss.name,
-        Value = false,
-        Flag = "Boss_" .. boss.name .. "_Cfg", -- [ADDED FLAG]
-        Callback = function(v)
-            bossList[i].kill = v
-        end
-    })
-    FM_Add("Bosses", tgl)
-end
-
--- ==================== CATEGORY: TRIAL ====================
-local TrialNames = {}
-for _, t in ipairs(trialList) do table.insert(TrialNames, t.name) end
-
-local TrialDD = MainTab:Dropdown({
-    Title = "Trial Selection",
-    Values = TrialNames,
-    Multi = true,
-    Flag = "TrialSelect_Cfg", -- [ADDED FLAG]
-    Callback = function(vals)
-        table.clear(targetTrial)
-        if type(vals) == "table" then
-            for _, v in ipairs(vals) do
-                table.insert(targetTrial, (type(v)=="table" and v.Title) or v)
-            end
-        end
-    end
-})
-FM_Add("Trial", TrialDD)
-
-local WaveInput = MainTab:Input({
-    Title = "Target Wave",
-    Desc = "Leave after this wave",
-    Value = "500",
-    Flag = "WaveTarget_Cfg", -- [ADDED FLAG]
-    Callback = function(v) targetWaveTrial = tonumber(v) or 500 end
-})
-FM_Add("Trial", WaveInput)
-
-local AutoTrialToggle = MainTab:Toggle({
-    Title = "Auto Farm Trial",
-    Value = false,
-    Flag = "AutoTrial_Cfg", -- [ADDED FLAG]
-    Callback = function(v)
-        isTrial = v
-        if v then task.spawn(autoFarmDungeon) end
-    end
-})
-FM_Add("Trial", AutoTrialToggle)
-
--- ==================== CATEGORY: POWERS ====================
-for _, power in ipairs(powerList) do
-    local ptgl = MainTab:Toggle({
-        Title = "Auto " .. power.name,
-        Value = false,
-        Flag = "Power_"..power.name.."_Cfg", -- [ADDED FLAG]
-        Callback = function(v)
-            changePower(power.name, v)
-        end
-    })
-    FM_Add("Powers", ptgl)
-end
-
--- ==================== CATEGORY: STRONGER ====================
-local RankToggle = MainTab:Toggle({
-    Title = "Auto Rank Up",
-    Value = false,
-    Flag = "AutoRankUp_Cfg", -- [ADDED FLAG]
-    Callback = function(v) isRankUp = v end
-})
-FM_Add("Stronger", RankToggle)
-
-local ClaimExpToggle = MainTab:Toggle({
-    Title = "Auto Claim Heroes Expedition",
-    Value = false,
-    Flag = "AutoClaimExp_Cfg", -- [ADDED FLAG]
-    Callback = function(v) isAutoClaimExpedition = v end
-})
-FM_Add("Stronger", ClaimExpToggle)
-
-local ExpMapList = {"None"}
-task.spawn(function()
-    local added = {}
-    for _, boss in ipairs(bossList) do
-        if not added[boss.map] then
-            table.insert(ExpMapList, boss.map)
-            added[boss.map] = true
-        end
-    end
-end)
-
-local ExpDropdown = MainTab:Dropdown({
-    Title = "Expedition Map",
-    Desc = "Auto Start Expedition",
-    Values = ExpMapList,
-    Value = "None",
-    Flag = "ExpTarget_Cfg", -- [ADDED FLAG]
-    Callback = function(v)
-        expeditionTarget = (type(v) == "table" and v.Title) or v
-    end
-})
-FM_Add("Stronger", ExpDropdown)
-
-local HatchDropdown = MainTab:Dropdown({
-    Title = "Auto Hatch (Star)",
-    Desc = "Stay near star to open",
-    Values = ExpMapList,
-    Value = "None",
-    Flag = "HatchTarget_Cfg", -- [ADDED FLAG]
-    Callback = function(v)
-        targetStar = (type(v) == "table" and v.Title) or v
-    end
-})
-FM_Add("Stronger", HatchDropdown)
-
--- ==================== SETTINGS TAB (ADDED LIKE YUHU) ====================
-local SettingsTab = Window:Tab({
-    Title = "Settings",
-    Icon = "settings-2"
-});
-
-local ConfigSection = SettingsTab:Section({
-    Title = "Config Manager",
-    Icon = "save",
-    Opened = true
-});
-
-local ConfigName = "ANConfigAA";
-SettingsTab:Input({
-    Title = "Config Name",
-    Placeholder = "ANConfigAA",
-    Flag = "ConfigName_Input",
-    Callback = function(txt)
-        ConfigName = txt;
-    end
-});
-
-SettingsTab:Button({
-    Title = "Save Config",
-    Icon = "save",
-    Callback = function()
-        -- Save ConfigManager (Flags)
-        (Window.ConfigManager:CreateConfig(ConfigName)):Save();
-        Window:Notify({Title = "Success", Content = "Saved!", Icon = "check"});
-    end
-});
-
-SettingsTab:Button({
-    Title = "Load Config",
-    Icon = "upload",
-    Callback = function()
-        local cfg = Window.ConfigManager:GetConfig(ConfigName);
-        if cfg then
-            cfg:Load();
-            -- Refresh Dynamic Lists manually if needed
-            if LocDropdown then LocDropdown:Refresh(locationNumber) end
-            Window:Notify({Title = "Success", Content = "Loaded!", Icon = "check"});
-        end;
-    end
-});
-
-SettingsTab:Button({
-    Title = "Delete Config",
-    Icon = "trash",
-    Callback = function()
-        Window.ConfigManager:DeleteConfig(ConfigName);
-        Window:Notify({Title = "Success", Content = "Deleted!", Icon = "trash"});
-    end
-});
-
-local FPSBtn = SettingsTab:Button({
-    Title = "Reduce Lag / FPS Boost",
-    Icon = "monitor",
-    Callback = function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/khuyenbd8bb/RobloxKaitun/refs/heads/main/FPS%20Booster.lua"))()
-        Notify("System", "FPS Boost Applied", "check")
-    end
-})
-
--- Initialize Category View
-FM_OnChange("Farm")
-Window:SelectTab(MainTab.Index);
-
--- ============================================================================
---  AUTO CONFIG LOADER (LIKE YUHU)
--- ============================================================================
-task.spawn(function()
-    task.wait(1.5);
-    local DefaultConfig = "ANConfigAA";
-    local CM = Window.ConfigManager;
-
-    -- Folder Config sudah dibuat di atas
-    
-    pcall(function()
-        if isfile(FolderPath .. "/Config/" .. DefaultConfig .. ".json") then
-            local cfg = CM:GetConfig(DefaultConfig) or CM:CreateConfig(DefaultConfig);
-            cfg:Load();
-            
-            -- Refresh UI yang datanya dinamis
-            if LocDropdown then LocDropdown:Refresh(locationNumber) end
-            
-            l:Notify({
-                Title = "Config",
-                Content = "Restored " .. DefaultConfig,
-                Icon = "check",
-                Duration = 2
-            });
+        table.clear(targetList); 
+        if v then 
+             local val = (type(v) == "table" and (v.Value or v.Title)) or v
+             table.insert(targetList, val)
+             if not isUpdatingUI and not isTransitioning then
+                 local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
+                 if currentMap then SaveMapSelection(currentMap, val) end
+             end
         else
-            CM:CreateConfig(DefaultConfig);
-        end;
-    end);
+             if not isUpdatingUI and not isTransitioning then
+                 local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
+                 if currentMap then SaveMapSelection(currentMap, nil) end
+             end
+        end 
+    end
+})
+FM_Add("Farm", UI.EnemyDD)
+FM_Add("Farm", MainTab:Toggle({Title = "Auto Kill Selected", Flag="Farm1_Cfg", Callback = function(v) isFarm1 = v end}))
 
-    -- Auto Save Loop
+-- BOSSES
+local MapList = {"None"}
+task.spawn(function() local added={} for _,data in pairs(GlobalBossDB) do local map = data.Map if map and not added[map] then table.insert(MapList,map) added[map]=true end end end)
+local BossListData = {}
+for name, data in pairs(GlobalBossDB) do
+    local bossDropIcons = {}
+    if data.Drops then
+        for _, drop in ipairs(data.Drops) do
+            if drop.Item then
+                local iconFound = nil
+                if drop.Type == "Sword" then local swordData = GlobalSwordDB[drop.Item] if swordData then iconFound = swordData.Icon end
+                else local itemData = GlobalItemDB[drop.Item] if itemData then iconFound = itemData.Icon end end
+                if iconFound then table.insert(bossDropIcons, iconFound) end
+            end
+        end
+    end
+    table.insert(BossListData, {Title = name .. " [" .. (data.Difficult or "Boss") .. "]", Desc = "HP: " .. (data.Health or "?"), Value = name, Icon = CharacterIcons[name] or nil, Images = bossDropIcons})
+end
+table.sort(BossListData, function(a,b) return a.Value < b.Value end)
+
+FM_Add("Bosses", MainTab:Toggle({Title = "Enable Auto Boss Hunt", Desc = "Turn this ON to auto-detect Bosses from chat.", Flag = "AutoBoss_Master_Cfg", Callback = function(v) isAutoBoss = v if not v then isGlobalBossActive = false end end}))
+FM_Add("Bosses", MainTab:Dropdown({Title = "Select Boss Targets", Values = BossListData, Multi = true, AllowNone = true, Flag = "GlobalBoss_Selection", Callback = function(val) selectedBosses = {} if type(val) == "table" then for _, v in ipairs(val) do table.insert(selectedBosses, (type(v)=="table" and v.Value) or v) end else selectedBosses = val end end}))
+FM_Add("Bosses", MainTab:Button({Title = "Force Start / Scan Current Map", Desc = "Manually check if a selected boss is in the current map", Icon = "swords", Callback = function() isAutoBoss = true local found = false local EnemiesFolder = workspace:FindFirstChild("Client") and workspace.Client:FindFirstChild("Enemies") if EnemiesFolder then for _, mob in pairs(EnemiesFolder:GetChildren()) do for _, targetName in pairs(selectedBosses) do if mob.Name == targetName then found = true isGlobalBossActive = true ExecuteKillBoss(targetName) break end end if found then break end end end if not found then Notify("System", "No selected boss found here.", "search") end end}))
+-- FM_Add("Bosses", MainTab:Toggle({Title = "Active Status", Desc = "Shows if Global Boss Logic is running (Read Only)", Value = false, Callback = function(v) if not v then isGlobalBossActive = false end end, Flag = "GlobalBoss_Status"}))
+
+-- GAMEMODES (Trial & Raid)
+local TrialNames = {} for _, t in ipairs(trialList) do table.insert(TrialNames, t.name) end
+FM_Add("Gamemodes", MainTab:Dropdown({Title="Trial Selection", Values=TrialNames, Multi=true, Flag="TrialSelect_Cfg", Callback=function(v) end})) -- Selection placeholder, currently using trialList generic
+FM_Add("Gamemodes", MainTab:Input({Title="Target Wave (Trial)", Value="500", Flag="WaveTarget_Cfg", Callback=function(v) targetWaveTrial = tonumber(v) or 500 end}))
+FM_Add("Gamemodes", MainTab:Toggle({Title="Auto Farm Trial", Flag="AutoTrial_Cfg", Callback=function(v) isTrial = v; if v then task.spawn(autoFarmDungeon) end end}))
+
+FM_Add("Gamemodes", MainTab:Input({Title="Target Wave (Raid)", Value="50", Flag="WaveTargetRaid_Cfg", Callback=function(v) targetWaveRaid = tonumber(v) or 50 end}))
+FM_Add("Gamemodes", MainTab:Toggle({Title="Auto Farm Raid", Flag="AutoRaid_Cfg", Callback=function(v) isRaid = v; if v then task.spawn(autoFarmRaid) end end}))
+
+-- POWERS
+for _, power in ipairs(powerList) do FM_Add("Powers", MainTab:Toggle({Title="Auto "..power.name, Flag="Power_"..power.name, Callback=function(v) changePower(power.name, v) end})) end
+
+-- UPGRADE RANK
+UI.RankInfo = MainTab:Paragraph({Title = "Rank Info: Loading...", Desc = "Waiting for Player Data...", Image = "rbxassetid://108641720461944"})
+FM_Add("Upgrade Rank", UI.RankInfo)
+FM_Add("Upgrade Rank", MainTab:Toggle({Title="Auto Rank Up", Flag="RankUp_Cfg", Callback=function(v) isRankUp = v end}))
+task.spawn(function()
     while not Window.Destroyed do
-        task.wait(10);
-        pcall(function()
-            local cfg = Window.ConfigManager:GetConfig(DefaultConfig);
-            if cfg then
-                cfg:Save();
+        if getgenv().PlayerData and getgenv().PlayerData.Rank and #GlobalRankDB > 0 then
+            local currentRankIdx = getgenv().PlayerData.Rank
+            local nextRankIdx = currentRankIdx + 1
+            local currentPower = getgenv().PlayerData.Power or 0
+            local currentRankData = GlobalRankDB[currentRankIdx]
+            local nextRankData = GlobalRankDB[nextRankIdx]
+            if currentRankData and nextRankData then
+                local nextRankPowerReq = ParseAbbreviated(nextRankData.Power)
+                local currentPerkPower = (currentRankData.Perks and currentRankData.Perks.Power) or "0"
+                local nextPerkPower = (nextRankData.Perks and nextRankData.Perks.Power) or "0"
+                local progress = 0
+                if nextRankPowerReq > 0 then progress = math.clamp(currentPower / nextRankPowerReq, 0, 1) end
+                local progressPercent = math.floor(progress * 100)
+                local bars = 20
+                local filled = math.floor(progress * bars)
+                local empty = bars - filled
+                local barStr = string.rep("■", filled) .. string.rep("□", empty)
+                if UI.RankInfo then
+                    UI.RankInfo:SetTitle(string.format("Rank %d > Rank %d", currentRankIdx, nextRankIdx))
+                    UI.RankInfo:SetDesc(string.format("Perks x%s > x%s\n%s %d%%\nPower: %s / %s", currentPerkPower, nextPerkPower, barStr, progressPercent, FormatNumber(currentPower), nextRankData.Power))
+                end
             else
-                (CM:CreateConfig(DefaultConfig)):Save();
-            end;
-        end);
-    end;
-end);
+                 if UI.RankInfo then UI.RankInfo:SetTitle("Max Rank Reached") UI.RankInfo:SetDesc("You have reached the maximum rank!") end
+            end
+        end
+        task.wait(1)
+    end
+end)
+
+-- STRONGER
+FM_Add("Stronger", MainTab:Toggle({Title="Auto Claim Heroes Expedition", Flag="ClaimExp_Cfg", Callback=function(v) isAutoClaimExpedition = v end}))
+FM_Add("Stronger", MainTab:Dropdown({Title="Expedition Map", Values=MapList, Value="None", Flag="ExpTarget_Cfg", Callback=function(v) expeditionTarget = (type(v)=="table" and v.Title) or v end}))
+FM_Add("Stronger", MainTab:Dropdown({Title="Auto Hatch (Star)", Values=MapList, Value="None", Flag="HatchTarget_Cfg", Callback=function(v) targetStar = (type(v)=="table" and v.Title) or v end}))
+
+-- SETTINGS TAB
+local SettingsTab = Window:Tab({Title = "Settings", Icon = "settings-2"})
+local ConfigSection = SettingsTab:Section({Title = "Config Manager", Icon = "save", Opened = true})
+SettingsTab:Input({Title = "Config Name", Placeholder = "AN_AnimeAdvanced", Flag = "ConfigName_Input", Callback = function(txt) ConfigName = txt end})
+SettingsTab:Button({Title = "Save Config", Icon = "save", Callback = function() local cfg = Window.ConfigManager:CreateConfig(ConfigName) cfg:Save() Notify("Config", "Saved!", "check") end})
+SettingsTab:Button({Title = "Load Config", Icon = "upload", Callback = function() local cfg = Window.ConfigManager:GetConfig(ConfigName) or Window.ConfigManager:CreateConfig(ConfigName); if cfg then cfg:Load(); Notify("Config", "Loaded!", "check") end end})
+SettingsTab:Button({Title = "Delete Config", Icon = "trash", Callback = function() Window.ConfigManager:DeleteConfig(ConfigName); Notify("Config", "Deleted!", "trash") end})
+SettingsTab:Button({Title = "Reduce Lag / FPS Boost", Icon = "monitor", Callback = function() loadstring(game:HttpGet("https://raw.githubusercontent.com/khuyenbd8bb/RobloxKaitun/refs/heads/main/FPS%20Booster.lua"))() Notify("System", "Boosted!", "check") end})
+
+FM_OnChange("Farm")
+Window:SelectTab(MainTab.Index)
+
+-- ============================================================================
+--  INITIALIZATION
+-- ============================================================================
+task.spawn(function()
+    task.wait(1.5)
+    local CM = Window.ConfigManager
+    pcall(function()
+        if isfile(ConfigPath .. "/" .. ConfigName .. ".json") then
+            local cfg = CM:CreateConfig(ConfigName)
+            cfg:Load()
+            Notify("Config", "Auto-Loaded", "check")
+        else
+            CM:CreateConfig(ConfigName)
+        end
+    end)
+    repeat task.wait(1) if not getgenv().PlayerData then ScanPlayerData() end until getgenv().PlayerData
+    resetEnemiesList()
+    pcall(function()
+        local args = {{{"General", "Settings", "Update", "Auto Rejoin", false, n = 5}, "\2"}}
+        ReplicatedStorage:WaitForChild("BridgeNet2"):WaitForChild("dataRemoteEvent"):FireServer(unpack(args))
+    end)
+    while not Window.Destroyed do
+        task.wait(1)
+        pcall(function() local cfg = Window.ConfigManager:GetConfig(ConfigName) if cfg then cfg:Save() end end)
+    end
+end)
