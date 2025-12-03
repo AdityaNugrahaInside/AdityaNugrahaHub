@@ -11,6 +11,7 @@ local TextChatService = game:GetService("TextChatService")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local VirtualUser = game:GetService('VirtualUser')
+local PlayerScripts = LocalPlayer:WaitForChild("PlayerScripts")
 
 -- [VARS & CHARACTER]
 local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -29,10 +30,27 @@ LocalPlayer.Idled:Connect(function()
     VirtualUser:ClickButton2(Vector2.new())
 end)
 
+-- [HOOK SYSTEM: DISABLE GACHA ANIMATION]
+task.spawn(function()
+    local success, err = pcall(function()
+        local GachaScriptPath = PlayerScripts:WaitForChild("Omni"):WaitForChild("Scripts"):WaitForChild("Interface"):WaitForChild("Scripts"):WaitForChild("Gacha")
+        local GachaModule = require(GachaScriptPath)
+        getgenv().OldDisplayRewards = getgenv().OldDisplayRewards or GachaModule.DisplayRewards
+
+        GachaModule.DisplayRewards = function(...)
+            return nil
+        end
+    end)
+    
+    if not success then
+        warn("Failed to Hook Gacha Animation: " .. tostring(err))
+    end
+end)
+
 -- [CONFIG PATHS]
 local FolderPath = "ANUI/AnimeAdvanced"
 local ConfigPath = FolderPath .. "/config"
-local SelectionsFile = FolderPath .. "/MapSelections.json" -- File Save Target Per-Map
+local SelectionsFile = FolderPath .. "/MapSelections.json"
 local ConfigName = "AN_AnimeAdvanced"
 
 if not isfolder("ANUI") then makefolder("ANUI") end
@@ -72,27 +90,17 @@ local function GetOnlineKeys()
 end
 
 -- [HELPER: DATA SCAN]
--- Fungsi ini hanya sebagai backup jika BridgeNet belum mengirim data
+local OmniRef = require(game:GetService("ReplicatedStorage").Omni)
+
 local function ScanPlayerData()
-    local oldData = getgenv().PlayerData
-    -- Jangan hapus nil secara paksa jika kita sudah punya data dari BridgeNet agar tidak flicker
-    if not getgenv().PlayerData then
-        local candidates = {}
-        for _, v in pairs(getgc(true)) do
-            if type(v) == "table" then
-                if oldData and v == oldData then continue end
-                if rawget(v, "Map") and rawget(v, "Coins") and rawget(v, "Stats") then
-                    if v.Map ~= nil then table.insert(candidates, v) end
-                end
-            end
-        end
-        if #candidates > 0 then getgenv().PlayerData = candidates[#candidates] end
+    if OmniRef and OmniRef.Data then
+        getgenv().PlayerData = OmniRef.Data
     end
 end
-task.spawn(ScanPlayerData)
 
 -- [UI LIBRARY]
 local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/main.lua"))()
+-- local l = require("d:/Roblox/A/WindUI/src/Init.lua")
 local Window = l:CreateWindow({
     Title = "AN Hub - Anime Advanced",
     Icon = "rbxassetid://84366761557806",
@@ -120,6 +128,12 @@ local Window = l:CreateWindow({
 task.delay(1.0, function() Window:CollapseSidebar() end)
 task.delay(3.0, function() Window:ExpandSidebar() end)
 
+task.spawn(function()
+    while not Window.Destroyed do
+        ScanPlayerData()
+        task.wait(1)
+    end
+end)
 local function Notify(title, content, icon)
     if l then l:Notify({ Title = title, Content = content, Icon = icon, Duration = 3 }) end
 end
@@ -137,7 +151,7 @@ local nameList = {}
 local isFarm1 = false
 
 -- Boss Vars
-local GlobalBossDB = {} -- Dynamic from Module
+local GlobalBossDB = {}
 local selectedBosses = {}
 local isAutoBoss = false 
 local isGlobalBossActive = false 
@@ -149,20 +163,78 @@ local targetWaveTrial = 500
 local trialList = {{name = "TrialEasy", time = 15}}
 local isTrial = false
 
--- Raid Vars (NEW)
+-- Raid Vars
 local waveRaid = 0
 local targetWaveRaid = 50
 local isRaid = false
-local raidJoinList = {{name = "Raid", time = 45}} -- Sesuaikan waktu jika perlu, default disamakan logicnya
+local raidJoinList = {{name = "Raid", time = 0}} 
 
--- Powers
-local powerList = {
-    {name = "Hero Rank", auto = false},
-    {name = "Ninja Rank", auto = false},
-    {name = "Haki", auto = false},
-    {name = "Passive", auto = false},
-    {name = "Clan", auto = false}
-}
+-- [DYNAMIC GACHA DATA SYSTEM]
+local powerList = {}       
+local PowerToggles = {}    
+-- [TALENT SYSTEM VARS]
+local TalentRankList = {'F', 'E', 'D', 'C', 'B', "A-", 'A'} -- Sesuai Script 2 (Machines.Talents)
+local TalentTargets = {} -- Menyimpan pilihan user
+local FormattedTalentTargets = {} -- Dictionary untuk dikirim ke server {["A"]=true}
+
+-- Helper untuk Cek Map Unlocked
+local function IsMapUnlocked(mapName)
+    if not mapName or mapName == "Global" then return true end
+    local pData = getgenv().PlayerData
+    if pData and pData.Maps then
+        if pData.Maps[mapName] ~= nil then
+            return true
+        end
+    end
+    return false
+end
+
+local function LoadDynamicGachaList()
+    table.clear(powerList) 
+    
+    local MachinesFolder = game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Gacha"):WaitForChild("Machines")
+    
+    if MachinesFolder then
+        for _, module in pairs(MachinesFolder:GetChildren()) do
+            if module:IsA("ModuleScript") then
+                local success, data = pcall(function() return require(module) end)
+                
+                if success and type(data) == "table" and data.Item then
+                    local writableData = {}
+                    for k, v in pairs(data) do
+                        writableData[k] = v
+                    end
+                    
+                    writableData.auto = false
+                    writableData.allow = true
+                    writableData.Map = data.Map or "Global"
+                    
+                    -- [MODIFIKASI: Deteksi jika ini adalah Talents]
+                    if data.Name == "Talents" then
+                         writableData.IsTalent = true
+                    else
+                         writableData.IsTalent = false
+                    end
+                    
+                    table.insert(powerList, writableData)
+                end
+            end
+        end
+    end
+    table.sort(powerList, function(a, b) return a.Name < b.Name end)
+end
+
+task.spawn(LoadDynamicGachaList)
+
+-- World Upgrades Vars
+local wu_SelectedMap = "Current Map"
+local WU_MapConfig = {} 
+local function GetWUConfig(mapName)
+    if not WU_MapConfig[mapName] then
+        WU_MapConfig[mapName] = {Power = false, Damage = false, Coins = false}
+    end
+    return WU_MapConfig[mapName]
+end
 
 -- Stronger
 local isAutoClaimExpedition = false
@@ -200,8 +272,61 @@ local GlobalItemDB = {}
 local GlobalAvatarDB = {}
 local GlobalSwordDB = {} 
 local GlobalRankDB = {}
+local GlobalMapDB = {} 
+local GlobalWorldUpgradeDB = {} 
+local GlobalUpgradeSystemsDB = {} -- [TAMBAHAN BARU]
 
--- Helper: Parse Number Suffix
+local function LoadGameData()
+    local successBoss, resultBoss = pcall(function() return require(ReplicatedStorage.Shared.Enemies["Global Bosses"]) end)
+    if successBoss and type(resultBoss) == "table" then
+        for bossName, data in pairs(resultBoss) do
+            if data.Map then GlobalBossDB[bossName] = data end 
+        end
+    end
+
+    local successRanks, resultRanks = pcall(function() return require(ReplicatedStorage.Shared.Ranks) end)
+    if successRanks and type(resultRanks) == "table" then GlobalRankDB = resultRanks end
+
+    local successMaps, resultMaps = pcall(function() return require(ReplicatedStorage.Shared.Maps) end)
+    if successMaps and type(resultMaps) == "table" then GlobalMapDB = resultMaps end
+
+    -- Load World Upgrades
+    local WUFolder = ReplicatedStorage.Shared:FindFirstChild("WorldUpgrades")
+    if WUFolder then
+        for _, module in pairs(WUFolder:GetChildren()) do
+            if module:IsA("ModuleScript") then
+                local s, r = pcall(function() return require(module) end)
+                if s and type(r) == "table" then
+                    GlobalWorldUpgradeDB[module.Name] = r
+                end
+            end
+        end
+    end
+
+    -- [TAMBAHAN BARU: Load Upgrade Systems (Trial, etc)]
+    local SysFolder = ReplicatedStorage.Shared:FindFirstChild("Upgrade") and ReplicatedStorage.Shared.Upgrade:FindFirstChild("Systems")
+    if SysFolder then
+        for _, module in pairs(SysFolder:GetChildren()) do
+            if module:IsA("ModuleScript") then
+                local s, r = pcall(function() return require(module) end)
+                if s and type(r) == "table" then
+                    GlobalUpgradeSystemsDB[r.Name] = r -- Key: "Trial Upgrades"
+                end
+            end
+        end
+    end
+
+    local s1, r1 = pcall(function() return require(ReplicatedStorage.Shared.CharacterIcons) end)
+    if s1 then CharacterIcons = r1 end
+    local s2, r2 = pcall(function() return require(ReplicatedStorage.Shared.Items) end)
+    if s2 then GlobalItemDB = r2 end
+    local s3, r3 = pcall(function() return require(ReplicatedStorage.Shared.Avatars) end)
+    if s3 then GlobalAvatarDB = r3 end
+    local s4, r4 = pcall(function() return require(ReplicatedStorage.Shared.Swords) end)
+    if s4 then GlobalSwordDB = r4 end
+end
+LoadGameData()
+
 local function ParseAbbreviated(str)
     if type(str) ~= "string" then return 0 end
     local num = tonumber(string.match(str, "^[%d%.]+")) or 0
@@ -217,7 +342,6 @@ local function ParseAbbreviated(str)
     return num * mult
 end
 
--- Helper: Format Number
 local function FormatNumber(n)
     if n >= 1e18 then return string.format("%.2fQn", n/1e18)
     elseif n >= 1e15 then return string.format("%.2fQd", n/1e15)
@@ -228,33 +352,6 @@ local function FormatNumber(n)
     else return tostring(n) end
 end
 
-local function LoadGameData()
-    -- Load Global Bosses
-    local successBoss, resultBoss = pcall(function() return require(ReplicatedStorage.Shared.Enemies["Global Bosses"]) end)
-    if successBoss and type(resultBoss) == "table" then
-        for bossName, data in pairs(resultBoss) do
-            if data.Map then GlobalBossDB[bossName] = data end 
-        end
-    end
-
-    -- Load Ranks
-    local successRanks, resultRanks = pcall(function() return require(ReplicatedStorage.Shared.Ranks) end)
-    if successRanks and type(resultRanks) == "table" then
-        GlobalRankDB = resultRanks
-    end
-
-    -- Load Other DBs
-    local s1, r1 = pcall(function() return require(ReplicatedStorage.Shared.CharacterIcons) end)
-    if s1 then CharacterIcons = r1 end
-    local s2, r2 = pcall(function() return require(ReplicatedStorage.Shared.Items) end)
-    if s2 then GlobalItemDB = r2 end
-    local s3, r3 = pcall(function() return require(ReplicatedStorage.Shared.Avatars) end)
-    if s3 then GlobalAvatarDB = r3 end
-    local s4, r4 = pcall(function() return require(ReplicatedStorage.Shared.Swords) end)
-    if s4 then GlobalSwordDB = r4 end
-end
-LoadGameData()
-
 -- ============================================================================
 --  ENEMY LIST & AUTO SELECT (FARMING)
 -- ============================================================================
@@ -264,6 +361,7 @@ local DifficultyRank = {["Very Easy"]=1, ["Easy"]=2, ["Medium"]=3, ["Hard"]=4, [
 local function resetEnemiesList()
     isUpdatingUI = true
     
+    -- Pastikan PlayerData terupdate
     if not getgenv().PlayerData or not getgenv().PlayerData.Map then ScanPlayerData() end
     local PlayerData = getgenv().PlayerData
     if PlayerData and PlayerData.Map == nil then
@@ -273,10 +371,9 @@ local function resetEnemiesList()
 
     local currentNames = {}
     local nameSet = {}
-    local CurrentMapName = "Unknown"
+    local CurrentMapName = PlayerData.Map or "Unknown"
 
     if PlayerData and PlayerData.Map then
-        CurrentMapName = PlayerData.Map
         local success, AllEnemiesDB = pcall(function() return require(game:GetService("ReplicatedStorage").Shared.Enemies) end)
 
         if success and AllEnemiesDB and AllEnemiesDB[CurrentMapName] then
@@ -333,22 +430,38 @@ local function resetEnemiesList()
         table.clear(nameList)
         for _, v in ipairs(currentNames) do table.insert(nameList, v) end
         
+        -- [FIX PERMANEN: DIRECT VALUE SETTING]
+        -- Kita set targetnya DULUAN sebelum Refresh, jadi tidak perlu panggil Select()
         if UI.EnemyDD then
-            pcall(function() UI.EnemyDD:Refresh(nameList) end)
-            local savedEnemy = MapSelections[CurrentMapName]
-            local foundItem = nil
-            if savedEnemy then
-                for _, item in ipairs(nameList) do if item.Value == savedEnemy then foundItem = item break end end
-            end
-            if foundItem then
-                UI.EnemyDD:Select(foundItem)
-                table.clear(targetList)
-                table.insert(targetList, foundItem.Value)
-                Notify("System", "Auto-Selected: " .. foundItem.Value, "check")
-            else
-                UI.EnemyDD:Select(nil)
-                table.clear(targetList)
-            end
+            task.spawn(function()
+                -- 1. Cari musuh yang harus dipilih berdasarkan Save Data
+                local savedEnemy = MapSelections[CurrentMapName]
+                local foundItem = nil
+                
+                if savedEnemy then
+                    for _, item in ipairs(nameList) do 
+                        if item.Value == savedEnemy then foundItem = item break end 
+                    end
+                end
+                
+                -- 2. Inject Value langsung ke Library (Bypass fungsi Select yang berat)
+                if foundItem then
+                    UI.EnemyDD.Value = foundItem 
+                    
+                    table.clear(targetList)
+                    table.insert(targetList, foundItem.Value)
+                    Notify("System", "Auto-Selected: " .. foundItem.Value, "check")
+                else
+                    UI.EnemyDD.Value = nil -- Reset jika tidak ada save
+                    table.clear(targetList)
+                end
+
+                -- 3. Refresh UI SEKALI SAJA
+                -- Library akan otomatis membaca .Value yang baru kita set dan mewarnai tombolnya
+                pcall(function() 
+                    UI.EnemyDD:Refresh(nameList) 
+                end)
+            end)
         end
     end
     task.wait(0.2)
@@ -377,21 +490,11 @@ ReplicatedStorage.BridgeNet2.dataRemoteEvent.OnClientEvent:Connect(function(data
         if event[1] == "Player" and event[2] == "Data" and event[3] == "MassUpdate" then
             local uData = event[4]
             if uData then
-                if uData.Power then
-                    if not getgenv().PlayerData then getgenv().PlayerData = {} end
-                    getgenv().PlayerData.Power = uData.Power
-                end
-                
-                if uData.Rank then
-                    if not getgenv().PlayerData then getgenv().PlayerData = {} end
-                    getgenv().PlayerData.Rank = uData.Rank
-                end
-
                 if uData.Map then
-                    isTransitioning = false
                     if not getgenv().PlayerData then getgenv().PlayerData = {} end
                     getgenv().PlayerData.Map = uData.Map
                     task.spawn(function() task.wait(0.5) resetEnemiesList() end)
+                    isTransitioning = false
                 end
             end
         end
@@ -413,7 +516,7 @@ local function kill(monster)
     for _, target in pairs(targetList) do
         local mName = monster:GetAttribute("CustomEnemyType") or monster:GetAttribute("ID") or monster.Name
         if mName == target or monster.Name == target then stillTarget = true break end
-    end      
+    end        
     
     while isFarm1 and stillTarget and not isGlobalBossActive and not isTransitioning and not Window.Destroyed do 
         if not head or head.Transparency ~= 0 then break end
@@ -449,9 +552,17 @@ local function check()
     end
 end
 
+-- [UPDATE] Loop Utama Farm dengan Pengecekan Map
 task.spawn(function()
     while not Window.Destroyed do
-        if (isFarm1 == false) or isGlobalBossActive or isTransitioning == true then 
+        -- Ambil map saat ini
+        local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
+        
+        -- Cek apakah kita sedang di Map Gamemode (TrialEasy / Raid)
+        local isGamemodeMap = (currentMap == "TrialEasy") or (currentMap == "Raid")
+
+        -- Tambahkan kondisi isGamemodeMap ke pengecekan stop
+        if (isFarm1 == false) or isGlobalBossActive or isTransitioning == true or isGamemodeMap then 
             task.wait(1)
             continue
         end
@@ -505,6 +616,7 @@ local function ExecuteKillBoss(bossName)
     else
         l:Notify({Title="Global Boss", Content="Not Found / Despawned", Icon="x"})
         isGlobalBossActive = false
+        if savedPreviousMap then SmartTeleport(savedPreviousMap) savedPreviousMap = nil end
     end
 end
 
@@ -519,6 +631,12 @@ end
 TextChatService.MessageReceived:Connect(function(message)
     if Window.Destroyed then return end
     if not isAutoBoss then return end 
+
+    -- [UPDATE] Jangan Boss Hunt jika sedang di Gamemode
+    local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
+    if currentMap == "TrialEasy" or currentMap == "Raid" then
+        return 
+    end
 
     local text = message.Text
     for _, bossName in pairs(selectedBosses) do
@@ -606,7 +724,7 @@ local function checkTrial()
         end
 
         local EnemiesFolder = workspace:FindFirstChild("Client") and workspace.Client:FindFirstChild("Enemies")
-        if EnemiesFolder then
+        if EnemiesFolder and getgenv().PlayerData and getgenv().PlayerData.Map == "TrialEasy" then
             for _, monster in pairs(EnemiesFolder:GetChildren()) do
                 if not monster:FindFirstChild("Head") or monster.Head.Transparency ~= 0 then continue end
                 
@@ -671,13 +789,13 @@ local function checkRaid()
             if savedPreviousMap and savedPreviousMap ~= "None" and savedPreviousMap ~= "Raid" then
                 SmartTeleport(savedPreviousMap)
             else
-                SmartTeleport("Raid Lobby") -- Atau map lobby yang sesuai
+                SmartTeleport("Trial Lobby") -- Atau map lobby yang sesuai
             end
             return
         end
 
         local EnemiesFolder = workspace:FindFirstChild("Client") and workspace.Client:FindFirstChild("Enemies")
-        if EnemiesFolder then
+        if EnemiesFolder and getgenv().PlayerData and getgenv().PlayerData.Map == "Raid" then
             for _, monster in pairs(EnemiesFolder:GetChildren()) do
                 if not monster:FindFirstChild("Head") or monster.Head.Transparency ~= 0 then continue end
                 
@@ -693,25 +811,27 @@ local function checkRaid()
     end
 end
 
+-- [UBAH BAGIAN FUNGSI JOINRAID]
 local function joinRaid()
-    -- Cek Waktu Raid (Jika diperlukan, saat ini menggunakan raidJoinList)
     local isTargetRaid = false
     local currentTime = os.date("*t")
     
-    -- Logika cek waktu sederhana (atau jika Raid selalu buka, bisa di bypass)
+    -- Logika Waktu Persis seperti Trial (Cek menit 00 dan 30)
     for i, raid in pairs(raidJoinList) do
-        isTargetRaid = raid.name
+        if raid.time == currentTime.min or (raid.time + 30) == currentTime.min then 
+            isTargetRaid = raid.name 
+            break 
+        end
     end
-    -- Fallback: Jika tidak ada di list waktu, coba join langsung (opsional)
-    -- isTargetRaid = "Raid" 
 
+    -- Jika bukan waktunya, stop di sini (jangan join)
     if not isTargetRaid then return end
 
     local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
     if currentMap and currentMap ~= "Raid" and currentMap ~= "None" then savedPreviousMap = currentMap
-    elseif not savedPreviousMap then savedPreviousMap = "Trial Lobby" end
+    elseif not savedPreviousMap then savedPreviousMap = currentMap end
 
-    Notify("Raid", "Auto Joining Raid...", "hourglass")
+    Notify("Raid", "Time Matched! Auto Joining Raid...", "hourglass")
     task.wait(1)
     for i=1, 5 do
         -- [RAID JOIN REMOTE]
@@ -736,16 +856,113 @@ end
 
 
 -- Powers & Stronger Loops
-local function changePower(name, value) for _, power in pairs(powerList) do if power.name == name then power.auto = value return end end end
+
+
+
+-- [UPDATED GACHA LOGIC WITH DYNAMIC CHECK & BALANCE PROTECTION]
+local function changePower(name, value) for _, power in pairs(powerList) do if power.Name == name then power.auto = value return end end end
+
+-- [GACHA LOGIC LOOP - UPDATED FOR TALENTS]
 task.spawn(function()
     while not Window.Destroyed do
-        for _, power in pairs(powerList) do if power.auto == true then ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "Gacha", "Roll", power.name, {}, n = 10}, "\2"}) end end
-        task.wait(0.5)
+        for _, power in pairs(powerList) do
+            local balance = 0
+            local pData = getgenv().PlayerData
+            if pData and pData.Items then balance = pData.Items[power.Item] or 0 end
+            
+            -- [DYNAMIC PRICE CALCULATION FOR TALENTS]
+            local currentPrice = power.Price or 0
+            if power.IsTalent and pData and pData.Gacha and pData.Gacha.Talents then
+                local lockedData = pData.Gacha.Talents.Locked or {}
+                local lockedCount = 0
+                for _, isLocked in pairs(lockedData) do
+                    if isLocked then lockedCount = lockedCount + 1 end
+                end
+                currentPrice = currentPrice + lockedCount
+            end
+
+            if power.auto == true then 
+                -- 0. CEK MAP & TELEPORT
+                if not IsMapUnlocked(power.Map) and not power.allow then
+                    if PowerToggles[power.Name] then PowerToggles[power.Name]:Unlock() end
+                end
+
+                -- 1. CEK SALDO 
+                local canAfford = true
+                if power.Item and currentPrice > 0 then
+                    if balance < currentPrice then
+                        canAfford = false
+                        power.auto = false
+                        Notify("Gacha", "Not enough " .. power.Item .. "! Stopping " .. power.Name, "x")
+                        if PowerToggles[power.Name] then PowerToggles[power.Name]:Set(false) end
+                    end
+                end
+
+                -- 2. ROLL (DENGAN LOGIKA TALENT)
+                if canAfford then
+                    local args = {}
+                    
+                    if power.IsTalent then
+                        -- [AUTO STOP IF ALL LOCKED]
+                        local pData = getgenv().PlayerData
+                        if pData and pData.Gacha and pData.Gacha.Talents then
+                            local tData = pData.Gacha.Talents
+                            local currents = tData.Currents or {}
+                            local locked = tData.Locked or {}
+                            local allLocked = true
+                            local hasStats = false
+                            
+                            for statName, _ in pairs(currents) do
+                                hasStats = true
+                                if not locked[statName] then
+                                    allLocked = false
+                                    break
+                                end
+                            end
+                            
+                            if hasStats and allLocked then
+                                power.auto = false
+                                if PowerToggles[power.Name] then PowerToggles[power.Name]:Set(false) end
+                                Notify("System", "All Talents Locked! Auto Stopped.", "check")
+                                canAfford = false
+                            end
+                        end
+
+                        -- Logika Khusus Talent: Kirim Dictionary Targets
+                        -- Sesuai decompile: Signal:Fire(..., module_upvr_2.Cache.TalentsAutoTargets)
+                        args = {{"General", "Gacha", "Roll", power.Name, FormattedTalentTargets, n = 5}, "\2"}
+                    else
+                        -- Gacha Biasa: Kirim Table Kosong
+                        args = {{"General", "Gacha", "Roll", power.Name, {}, n = 5}, "\2"}
+                    end
+                    
+                    ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer(args) 
+                end
+            end
+            
+            -- Update UI Description
+            if PowerToggles[power.Name] and IsMapUnlocked(power.Map) then
+                if power.IsTalent then
+                     -- Tampilkan info target di tombol Talent
+                     local count = 0
+                     for _ in pairs(FormattedTalentTargets) do count = count + 1 end
+                     PowerToggles[power.Name]:SetDesc("Price: "..currentPrice.." | Targets: "..count)
+                else
+                     PowerToggles[power.Name]:SetDesc("Cost:"..currentPrice.."\n"..power.Item..":"..balance)
+                end
+            elseif PowerToggles[power.Name] then
+                PowerToggles[power.Name]:SetDesc("LOCKED: Need Unlock Map " .. power.Map)
+            end
+        end
+        task.wait(0.5) -- Speed roll
     end
 end)
+
 task.spawn(function()
     while not Window.Destroyed do
-        if targetStar and targetStar ~= "None" then ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "Stars", "Open", targetStar, 10, n = 10}, "\2"}) end
+        if targetStar and targetStar ~= "None" then
+            ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "Stars", "Open", targetStar, 10, n = 10}, "\2"})
+        end
         if isRankUp == true and getgenv().PlayerData and GlobalRankDB then
             local pData = getgenv().PlayerData
             local nextRank = (pData.Rank or 0) + 1
@@ -764,6 +981,74 @@ task.spawn(function()
     end
 end)
 
+-- World Upgrade Loop Logic (Updated with Coin Check & Max Level Check)
+task.spawn(function()
+    while not Window.Destroyed do
+        local targetMap = wu_SelectedMap
+        local pData = getgenv().PlayerData
+
+        -- 1. Tentukan Map Target
+        if targetMap == "Current Map" and pData then
+             targetMap = pData.Map
+        end
+
+        if targetMap and targetMap ~= "Current Map" and targetMap ~= "None" and pData then
+            -- 2. Ambil Config Auto Upgrade untuk Map ini
+            local mapConfig = GetWUConfig(targetMap)
+            
+            -- 3. Ambil Data Progress Pemain di Map ini
+            local userUpgrades = (pData.WorldUpgrades and pData.WorldUpgrades[targetMap]) or {}
+            
+            -- 4. Ambil Database Harga untuk Map ini
+            local dbUpgrades = GlobalWorldUpgradeDB[targetMap]
+
+            if dbUpgrades then
+                local myCoins = pData.Coins or 0
+
+                -- Fungsi Helper Lokal untuk Eksekusi Upgrade
+                local function TryUpgrade(typeStr)
+                    if mapConfig[typeStr] then -- Jika Toggle ON
+                        local typeData = dbUpgrades[typeStr]
+                        if typeData and typeData.Levels then
+                            -- Cek Level Saat Ini
+                            local currentLvl = userUpgrades[typeStr] or 0
+                            local nextLvl = currentLvl + 1
+                            
+                            -- Cek Harga Level Selanjutnya
+                            local nextLvlStr = tostring(nextLvl)
+                            local priceStr = typeData.Levels[nextLvlStr]
+                            
+                            if priceStr then -- Jika level selanjutnya ada (belum MAX)
+                                local price = ParseAbbreviated(priceStr)
+                                
+                                -- [PENGECEKAN UTAMA] Cek Saldo vs Harga
+                                if myCoins >= price then
+                                    ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "WorldUpgrades", "Upgrade", targetMap, typeStr, n = 5}, "\2"})
+                                    -- Kurangi koin bayangan agar loop tidak spam req saat koin pas-pasan sebelum data update
+                                    myCoins = myCoins - price 
+                                    task.wait(0.1) 
+                                else
+                                    -- Debug: print("Not enough coins for " .. typeStr .. " Lvl " .. nextLvl)
+                                end
+                            else
+                                -- Level Max, matikan toggle otomatis (Opsional, agar tidak cek terus)
+                                -- mapConfig[typeStr] = false 
+                            end
+                        end
+                    end
+                end
+
+                -- Cek ketiga tipe upgrade
+                TryUpgrade("Power")
+                TryUpgrade("Damage")
+                TryUpgrade("Coins")
+            end
+        end
+        task.wait(0.5) -- Delay loop
+    end
+end)
+
+
 -- ============================================================================
 --  UI INTERFACE
 -- ============================================================================
@@ -777,16 +1062,19 @@ Window:Tag({ Title = "v" .. l.Version, Icon = "github", Color = Color3.fromHex("
 local MainTab = Window:Tab({Title = "Main Feature", Icon = "swords", Profile = MakeProfile({Title = "Game Feature", Desc = "Anime Advanced"}), SidebarProfile = false})
 
 local FM_Categories = {}
-local function FM_Add(cat, elem) if not FM_Categories[cat] then FM_Categories[cat]={} end table.insert(FM_Categories[cat], elem) local f=rawget(elem,"ElementFrame") or (elem.UIElements and elem.UIElements.Main) if f then f.Visible=false end return elem end
-local function FM_OnChange(selected) for name, elems in pairs(FM_Categories) do local vis=(name==selected) for _, e in ipairs(elems) do local f=rawget(e,"ElementFrame") or (e.UIElements and e.UIElements.Main) if f then f.Visible=vis end end end end
+local function FM_Add(cat, elem) if not FM_Categories[cat] then FM_Categories[cat]={} end table.insert(FM_Categories[cat], elem) local f=rawget(elem,"ElementFrame") or (elem.UIElements and elem.UIElements.Main) or elem.GroupFrame if f then f.Visible=false end return elem end
+local function FM_OnChange(selected) for name, elems in pairs(FM_Categories) do local vis=(name==selected) for _, e in ipairs(elems) do local f=rawget(e,"ElementFrame") or (e.UIElements and e.UIElements.Main) or e.GroupFrame if f then f.Visible=vis end end end end
 
 local FM_Category = MainTab:Category({
     Title = "Select Category", Default = "Farm",
     Options = {
         {Title="Farm", Icon="sword"},
-        {Title="Bosses", Icon="skull"}, 
         {Title="Gamemodes", Icon="hourglass"}, 
-        {Title="Powers", Icon="zap"}, 
+        {Title="Bosses", Icon="skull"}, 
+        {Title="Gacha", Icon="dices"},
+        {Title="Avatars", Icon="user"}, -- [BARU] Ditambahkan disini
+        {Title="World Upgrade", Icon="globe"}, 
+        {Title="Trial Upgrades", Icon="zap"}, -- [BARU]
         {Title="Upgrade Rank", Icon="chevrons-up"}, 
         {Title="Stronger", Icon="star"}
     },
@@ -795,7 +1083,13 @@ local FM_Category = MainTab:Category({
 if FM_Category.ElementFrame then 
     FM_Category.ElementFrame.Parent = MainTab.UIElements.ContainerFrameCanvas 
     FM_Category.ElementFrame.Position = UDim2.new(0,0,0, MainTab.UIElements.ContainerFrame.Position.Y.Offset)
-    MainTab.UIElements.ContainerFrame.Position = UDim2.new(0,0,0, MainTab.UIElements.ContainerFrame.Position.Y.Offset + FM_Category.ElementFrame.Size.Y.Offset)
+    
+    local catSize = FM_Category.ElementFrame.Size.Y.Offset
+    MainTab.UIElements.ContainerFrame.Position = UDim2.new(0,0,0, MainTab.UIElements.ContainerFrame.Position.Y.Offset + catSize)
+    MainTab.UIElements.ContainerFrame.Size = UDim2.new(1, 0, 1, MainTab.UIElements.ContainerFrame.Size.Y.Offset - catSize)
+    
+    local pad = MainTab.UIElements.ContainerFrame:FindFirstChildOfClass("UIPadding")
+    if pad then pad.PaddingTop = UDim.new(0, 5) end
 end
 MainTab:Space({Columns=1})
 
@@ -825,6 +1119,30 @@ FM_Add("Farm", MainTab:Toggle({Title = "Auto Kill Selected", Flag="Farm1_Cfg", C
 -- BOSSES
 local MapList = {"None"}
 task.spawn(function() local added={} for _,data in pairs(GlobalBossDB) do local map = data.Map if map and not added[map] then table.insert(MapList,map) added[map]=true end end end)
+
+-- Helper khusus untuk parsing Health Boss (Support angka besar: Sx, Sp, Oc)
+local function ParseHealth(str)
+    if type(str) ~= "string" then return 0 end
+    local num = tonumber(string.match(str, "^[%d%.]+")) or 0
+    local suffix = string.match(str, "[%a]+$")
+    local mult = 1
+    
+    -- Satuan angka besar sesuai decompile
+    if suffix == "K" then mult = 1e3
+    elseif suffix == "M" then mult = 1e6
+    elseif suffix == "B" then mult = 1e9
+    elseif suffix == "T" then mult = 1e12
+    elseif suffix == "Qd" then mult = 1e15
+    elseif suffix == "Qn" then mult = 1e18
+    elseif suffix == "Sx" then mult = 1e21
+    elseif suffix == "Sp" then mult = 1e24
+    elseif suffix == "Oc" then mult = 1e27
+    elseif suffix == "N" then mult = 1e30
+    elseif suffix == "Dc" then mult = 1e33
+    end
+    return num * mult
+end
+
 local BossListData = {}
 for name, data in pairs(GlobalBossDB) do
     local bossDropIcons = {}
@@ -838,26 +1156,410 @@ for name, data in pairs(GlobalBossDB) do
             end
         end
     end
-    table.insert(BossListData, {Title = name .. " [" .. (data.Difficult or "Boss") .. "]", Desc = "HP: " .. (data.Health or "?"), Value = name, Icon = CharacterIcons[name] or nil, Images = bossDropIcons})
+    
+    -- Ambil Map Index untuk Sorting (Ambil dari GlobalMapDB yang sudah diload sebelumnya)
+    local mapIndex = 999
+    local mapName = data.Map or "Unknown"
+    if GlobalMapDB and GlobalMapDB[mapName] then
+        mapIndex = GlobalMapDB[mapName].Index or 999
+    end
+    
+    -- Ambil Health Value untuk Sorting
+    local healthVal = ParseHealth(data.Health or "0")
+
+    table.insert(BossListData, {
+        Title = name .. " [" .. (data.Difficult or "Boss") .. "]", 
+        Desc = "HP: " .. (data.Health or "?"), 
+        Value = name, 
+        Icon = CharacterIcons[name] or nil, 
+        Images = bossDropIcons,
+        -- Simpan data untuk sorting (tidak tampil di UI)
+        SortMapIndex = mapIndex,
+        SortHealth = healthVal
+    })
 end
-table.sort(BossListData, function(a,b) return a.Value < b.Value end)
+
+-- Logic Sorting: Urutkan Map (Index) -> Lalu Urutkan Health (Kecil ke Besar)
+table.sort(BossListData, function(a,b) 
+    if a.SortMapIndex == b.SortMapIndex then
+        return a.SortHealth < b.SortHealth
+    end
+    return a.SortMapIndex < b.SortMapIndex 
+end)
 
 FM_Add("Bosses", MainTab:Toggle({Title = "Enable Auto Boss Hunt", Desc = "Turn this ON to auto-detect Bosses from chat.", Flag = "AutoBoss_Master_Cfg", Callback = function(v) isAutoBoss = v if not v then isGlobalBossActive = false end end}))
 FM_Add("Bosses", MainTab:Dropdown({Title = "Select Boss Targets", Values = BossListData, Multi = true, AllowNone = true, Flag = "GlobalBoss_Selection", Callback = function(val) selectedBosses = {} if type(val) == "table" then for _, v in ipairs(val) do table.insert(selectedBosses, (type(v)=="table" and v.Value) or v) end else selectedBosses = val end end}))
 FM_Add("Bosses", MainTab:Button({Title = "Force Start / Scan Current Map", Desc = "Manually check if a selected boss is in the current map", Icon = "swords", Callback = function() isAutoBoss = true local found = false local EnemiesFolder = workspace:FindFirstChild("Client") and workspace.Client:FindFirstChild("Enemies") if EnemiesFolder then for _, mob in pairs(EnemiesFolder:GetChildren()) do for _, targetName in pairs(selectedBosses) do if mob.Name == targetName then found = true isGlobalBossActive = true ExecuteKillBoss(targetName) break end end if found then break end end end if not found then Notify("System", "No selected boss found here.", "search") end end}))
--- FM_Add("Bosses", MainTab:Toggle({Title = "Active Status", Desc = "Shows if Global Boss Logic is running (Read Only)", Value = false, Callback = function(v) if not v then isGlobalBossActive = false end end, Flag = "GlobalBoss_Status"}))
 
 -- GAMEMODES (Trial & Raid)
 local TrialNames = {} for _, t in ipairs(trialList) do table.insert(TrialNames, t.name) end
-FM_Add("Gamemodes", MainTab:Dropdown({Title="Trial Selection", Values=TrialNames, Multi=true, Flag="TrialSelect_Cfg", Callback=function(v) end})) -- Selection placeholder, currently using trialList generic
+FM_Add("Gamemodes", MainTab:Dropdown({Title="Trial Selection", Values=TrialNames, Multi=true, Flag="TrialSelect_Cfg", Callback=function(v) end})) 
 FM_Add("Gamemodes", MainTab:Input({Title="Target Wave (Trial)", Value="500", Flag="WaveTarget_Cfg", Callback=function(v) targetWaveTrial = tonumber(v) or 500 end}))
 FM_Add("Gamemodes", MainTab:Toggle({Title="Auto Farm Trial", Flag="AutoTrial_Cfg", Callback=function(v) isTrial = v; if v then task.spawn(autoFarmDungeon) end end}))
 
 FM_Add("Gamemodes", MainTab:Input({Title="Target Wave (Raid)", Value="50", Flag="WaveTargetRaid_Cfg", Callback=function(v) targetWaveRaid = tonumber(v) or 50 end}))
 FM_Add("Gamemodes", MainTab:Toggle({Title="Auto Farm Raid", Flag="AutoRaid_Cfg", Callback=function(v) isRaid = v; if v then task.spawn(autoFarmRaid) end end}))
 
--- POWERS
-for _, power in ipairs(powerList) do FM_Add("Powers", MainTab:Toggle({Title="Auto "..power.name, Flag="Power_"..power.name, Callback=function(v) changePower(power.name, v) end})) end
+-- ============================================================================
+--  TRIAL UPGRADES (DYNAMIC SYSTEM - 2 PER GROUP)
+-- ============================================================================
+
+-- ============================================================================
+--  TRIAL UPGRADES (DYNAMIC SYSTEM - 2 PER GROUP & PERKS INFO)
+-- ============================================================================
+
+local TrialUpgradeToggles = {}
+local TrialSystemName = "Trial Upgrades" 
+
+-- 1. UI Construction
+FM_Add("Trial Upgrades", MainTab:Paragraph({Title = "Trial Upgrades Manager", Desc = "Auto buy upgrades using Tickets"}))
+
+if GlobalUpgradeSystemsDB[TrialSystemName] and GlobalUpgradeSystemsDB[TrialSystemName].List then
+    local list = GlobalUpgradeSystemsDB[TrialSystemName].List
+    
+    local sortedKeys = {}
+    for k, v in pairs(list) do table.insert(sortedKeys, {Key = k, Index = v.Index or 99}) end
+    table.sort(sortedKeys, function(a,b) return a.Index < b.Index end)
+
+    local currentGroup 
+
+    for i, item in ipairs(sortedKeys) do
+        if i % 2 == 1 then
+            currentGroup = MainTab:Group({})
+            FM_Add("Trial Upgrades", currentGroup)
+        end
+
+        local upgradeName = item.Key
+        
+        local tgl = currentGroup:Toggle({
+            Title = upgradeName,
+            Desc = "Waiting...",
+            Flag = "TrialUp_"..upgradeName, 
+            Callback = function(v) 
+                TrialUpgradeToggles[upgradeName] = v 
+            end
+        })
+        
+        TrialUpgradeToggles[upgradeName .. "_UI"] = tgl
+    end
+end
+
+-- 2. Loop Logic Auto Upgrade
+task.spawn(function()
+    while not Window.Destroyed do
+        local pData = getgenv().PlayerData
+        local sysData = GlobalUpgradeSystemsDB[TrialSystemName]
+        
+        if pData and sysData and pData.Upgrade then
+            local myUpgrades = pData.Upgrade[TrialSystemName] or {}
+            
+            local priceType = sysData.Price.Type
+            local priceName = sysData.Price.Name
+            
+            local myBalance = 0
+            if priceType == "Item" and pData.Items then
+                myBalance = pData.Items[priceName] or 0
+            elseif pData[priceName] then 
+                myBalance = pData[priceName] or 0
+            end
+
+            for upgradeName, upgradeInfo in pairs(sysData.List) do
+                local toggleState = TrialUpgradeToggles[upgradeName]
+                local uiElement = TrialUpgradeToggles[upgradeName .. "_UI"]
+                
+                local currentLvl = myUpgrades[upgradeName] or 0
+                local maxLvl = upgradeInfo.Levels or 999
+                
+                -- Hitung Harga
+                local basePrice = upgradeInfo.Price.Base
+                local effectPrice = upgradeInfo.Price.Effect
+                local currentPrice = basePrice + (effectPrice * currentLvl)
+
+                -- [BARU] Hitung Perks (Stats)
+                local perkDesc = ""
+                if upgradeInfo.Perks then
+                    for _, p in ipairs(upgradeInfo.Perks) do
+                        -- Rumus Stat: BaseAmount + (Effect * (Level - 1))
+                        local totalVal = 0
+                        if currentLvl > 0 then
+                            totalVal = p.Amount + (p.Effect * (currentLvl - 1))
+                        end
+                        
+                        -- Format Teks
+                        if p.Type == "Times" then
+                            -- 0.1 -> 10%
+                            perkDesc = perkDesc .. "+" .. math.floor(totalVal * 100 + 0.5) .. "% " .. p.Name .. "\n"
+                        else
+                            perkDesc = perkDesc .. "+" .. totalVal .. " " .. p.Name .. "\n"
+                        end
+                    end
+                end
+
+                -- Update UI dengan Info Lengkap
+                if uiElement then
+                    local balInfo = priceName..": " .. FormatNumber(myBalance)
+                    
+                    if currentLvl >= maxLvl then
+                        uiElement:SetTitle(upgradeName .. " [MAX]")
+                        uiElement:SetDesc(perkDesc .. "Level: " .. currentLvl .. " (Maxed)")
+                        uiElement:Lock(true) -- Opsional: Lock jika max
+                        uiElement:Set(false)
+                    else
+                        uiElement:SetTitle(upgradeName)
+                        uiElement:SetDesc("Lvl: " .. currentLvl .. " | Cost: " .. FormatNumber(currentPrice) .. "\n" .. perkDesc .. balInfo)
+                    end
+                end
+
+                -- Eksekusi Buy
+                if toggleState and currentLvl < maxLvl then
+                    if myBalance >= currentPrice then
+                        ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({
+                            {"General", "Upgrade", "Upgrade", TrialSystemName, upgradeName, n = 5}, 
+                            "\2"
+                        })
+                        myBalance = myBalance - currentPrice
+                        task.wait(0.1)
+                    end
+                end
+            end
+        end
+        task.wait(0.5) 
+    end
+end)
+-- GACHA UI CREATION
+-- [TAMBAHAN UI TALENT TARGET]
+
+-- Loop Tombol Gacha Otomatis
+local currentGachaGroup
+for i, power in ipairs(powerList) do 
+    if i % 2 == 1 then
+        currentGachaGroup = MainTab:Group({})
+        FM_Add("Gacha", currentGachaGroup)
+    end
+
+    local titleStr = power.Name
+    if power.IsTalent then titleStr = "Auto " .. power.Name .. " (Use Target!)" end
+
+    local tgl = currentGachaGroup:Toggle({
+        Title = titleStr, 
+        Flag = "Power_" .. power.Name,
+        Image = power.Icon,
+        ImageSize = 24,
+        Callback = function(v) changePower(power.Name, v) end
+    })
+    
+    -- [LOCK SYSTEM INIT]
+    if not IsMapUnlocked(power.Map) then
+        if tgl.Lock then 
+             tgl:Lock(true)
+             power.allow = false
+             tgl:SetDesc("LOCKED: Need Unlock Map " .. power.Map)
+        end
+    end
+
+    PowerToggles[power.Name] = tgl
+end
+
+local TalentGroup = MainTab:Group({Title = "Talent Settings"})
+-- FM_Add("Gacha", TalentGroup)
+
+FM_Add("Gacha", TalentGroup:Dropdown({
+    Title = "Talent Target",
+    Desc = "Select Auto Lock Talents Stats if already fulfilled",
+    Values = TalentRankList,
+    Multi = true,
+    Flag = "TalentTargets_Cfg",
+    Callback = function(v)
+        TalentTargets = v
+        -- Konversi Array ke Dictionary untuk Server (PENTING!)
+        -- Contoh: User pilih {"A", "B"} -> Code ubah jadi {["A"]=true, ["B"]=true}
+        table.clear(FormattedTalentTargets)
+        if type(v) == "table" then
+            for _, rankName in ipairs(v) do
+                FormattedTalentTargets[rankName] = true
+            end
+        else
+            FormattedTalentTargets[v] = true
+        end
+    end
+}))
+
+-- ============================================================================
+--  WORLD UPGRADE UI (SORTED & NO CURRENT MAP)
+-- ============================================================================
+
+-- 1. Generate List Map (Sorted by Index)
+local WUMapList = {}
+local tempMapSorter = {}
+
+if GlobalMapDB and GlobalWorldUpgradeDB then
+    for mapName, mapData in pairs(GlobalMapDB) do
+        -- Hanya masukkan map yang punya data World Upgrades di database
+        if GlobalWorldUpgradeDB[mapName] then
+            table.insert(tempMapSorter, {Name = mapName, Index = mapData.Index or 999})
+        end
+    end
+    
+    -- Sortir dari Index Terkecil (Map Awal) ke Terbesar
+    table.sort(tempMapSorter, function(a,b) return a.Index < b.Index end)
+    
+    for _, m in ipairs(tempMapSorter) do
+        table.insert(WUMapList, m.Name)
+    end
+end
+
+-- 2. Setup Variables
+local WUPowerToggle
+local WUDamageToggle
+local WUCoinsToggle
+
+-- 3. Dropdown Map Selection
+local WU_MapDropdown = FM_Add("World Upgrade", MainTab:Dropdown({
+    Title = "Select Map", 
+    Desc = "Select the specific map you want to upgrade.", 
+    Values = WUMapList, 
+    Value = nil, -- Tidak ada default "Current Map" lagi
+    Flag = "WU_MapSelect", 
+    Callback = function(v) 
+        local selectedVal = (type(v)=="table" and v.Value) or v
+        wu_SelectedMap = selectedVal
+        
+        -- Update tampilan toggle saat ganti map
+        if selectedVal and selectedVal ~= "None" then
+            local conf = GetWUConfig(selectedVal)
+            if WUPowerToggle then WUPowerToggle:Set(conf.Power) end
+            if WUDamageToggle then WUDamageToggle:Set(conf.Damage) end
+            if WUCoinsToggle then WUCoinsToggle:Set(conf.Coins) end
+        end
+    end
+}))
+
+-- 4. Toggles
+WUPowerToggle = FM_Add("World Upgrade", MainTab:Toggle({
+    Title = "Power", 
+    Desc = "+0%",
+    Image = "rbxassetid://116941678612804",
+    Callback = function(v) 
+        if wu_SelectedMap then GetWUConfig(wu_SelectedMap).Power = v end
+    end
+}))
+
+WUDamageToggle = FM_Add("World Upgrade", MainTab:Toggle({
+    Title = "Damage", 
+    Desc = "+0%",
+    Image = "rbxassetid://78687483459513",
+    Callback = function(v) 
+        if wu_SelectedMap then GetWUConfig(wu_SelectedMap).Damage = v end
+    end
+}))
+
+WUCoinsToggle = FM_Add("World Upgrade", MainTab:Toggle({
+    Title = "Coins", 
+    Desc = "+0%",
+    Image = "rbxassetid://100340053265882",
+    Callback = function(v) 
+        if wu_SelectedMap then GetWUConfig(wu_SelectedMap).Coins = v end
+    end
+}))
+
+-- 5. Loop Logic World Upgrade (Updated: Remove Current Map Logic)
+task.spawn(function()
+    while not Window.Destroyed do
+        local targetMap = wu_SelectedMap
+        local pData = getgenv().PlayerData
+
+        -- [UPDATE] Kita hapus logika "Current Map"
+        -- Script hanya jalan jika user sudah memilih map spesifik di dropdown
+        
+        if targetMap and targetMap ~= "None" and pData then
+            local mapConfig = GetWUConfig(targetMap)
+            local userUpgrades = (pData.WorldUpgrades and pData.WorldUpgrades[targetMap]) or {}
+            local dbUpgrades = GlobalWorldUpgradeDB[targetMap]
+
+            if dbUpgrades then
+                local myCoins = pData.Coins or 0
+
+                local function TryUpgrade(typeStr)
+                    if mapConfig[typeStr] then 
+                        local typeData = dbUpgrades[typeStr]
+                        if typeData and typeData.Levels then
+                            local currentLvl = userUpgrades[typeStr] or 0
+                            local nextLvl = currentLvl + 1
+                            local nextLvlStr = tostring(nextLvl)
+                            local priceStr = typeData.Levels[nextLvlStr]
+                            
+                            if priceStr then 
+                                local price = ParseAbbreviated(priceStr)
+                                if myCoins >= price then
+                                    ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "WorldUpgrades", "Upgrade", targetMap, typeStr, n = 5}, "\2"})
+                                    myCoins = myCoins - price 
+                                    task.wait(0.1) 
+                                end
+                            end
+                        end
+                    end
+                end
+
+                TryUpgrade("Power")
+                TryUpgrade("Damage")
+                TryUpgrade("Coins")
+            end
+            
+            -- [UPDATE VISUAL UI DESKRIPSI]
+            -- Update teks deskripsi (+..%) di tombol toggle secara realtime
+            local mapUpgrades = userUpgrades or {}
+            local powLvl = mapUpgrades["Power"] or 0
+            local dmgLvl = mapUpgrades["Damage"] or 0
+            local coinLvl = mapUpgrades["Coins"] or 0
+            local MAX_LEVEL = 10
+            
+            local MAX_LEVEL = 10 
+            
+            if WUPowerToggle then 
+                WUPowerToggle:SetDesc("+" .. (powLvl * 5) .. "% (Lvl " .. powLvl .. ")")
+                if powLvl >= MAX_LEVEL then
+                    WUPowerToggle:SetTitle("Power [MAX]")
+                    if WUPowerToggle.Value then WUPowerToggle:Set(false) end
+                    if WUPowerToggle.Lock then WUPowerToggle:Lock(true) end
+                else
+                    WUPowerToggle:SetTitle("Power")
+                    if WUPowerToggle.Unlock then WUPowerToggle:Unlock() elseif WUPowerToggle.Lock then WUPowerToggle:Lock(false) end
+                end
+            end
+
+            if WUDamageToggle then 
+                WUDamageToggle:SetDesc("+" .. (dmgLvl * 5) .. "% (Lvl " .. dmgLvl .. ")")
+                if dmgLvl >= MAX_LEVEL then
+                    WUDamageToggle:SetTitle("Damage [MAX]")
+                    if WUDamageToggle.Value then WUDamageToggle:Set(false) end
+                    if WUDamageToggle.Lock then WUDamageToggle:Lock(true) end
+                else
+                    WUDamageToggle:SetTitle("Damage")
+                    if WUDamageToggle.Unlock then WUDamageToggle:Unlock() elseif WUDamageToggle.Lock then WUDamageToggle:Lock(false) end
+                end
+            end
+
+            if WUCoinsToggle then 
+                WUCoinsToggle:SetDesc("+" .. (coinLvl * 5) .. "% (Lvl " .. coinLvl .. ")")
+                if coinLvl >= MAX_LEVEL then
+                    WUCoinsToggle:SetTitle("Coins [MAX]")
+                    if WUCoinsToggle.Value then WUCoinsToggle:Set(false) end
+                    if WUCoinsToggle.Lock then WUCoinsToggle:Lock(true) end
+                else
+                    WUCoinsToggle:SetTitle("Coins")
+                    if WUCoinsToggle.Unlock then WUCoinsToggle:Unlock() elseif WUCoinsToggle.Lock then WUCoinsToggle:Lock(false) end
+                end
+            end
+        else
+            -- Jika belum pilih map, set desc ke default
+            if WUPowerToggle then WUPowerToggle:SetDesc("Select Map first") end
+            if WUDamageToggle then WUDamageToggle:SetDesc("Select Map first") end
+            if WUCoinsToggle then WUCoinsToggle:SetDesc("Select Map first") end
+        end
+        
+        task.wait(0.5)
+    end
+end)
 
 -- UPGRADE RANK
 UI.RankInfo = MainTab:Paragraph({Title = "Rank Info: Loading...", Desc = "Waiting for Player Data...", Image = "rbxassetid://108641720461944"})
@@ -899,6 +1601,185 @@ FM_Add("Stronger", MainTab:Toggle({Title="Auto Claim Heroes Expedition", Flag="C
 FM_Add("Stronger", MainTab:Dropdown({Title="Expedition Map", Values=MapList, Value="None", Flag="ExpTarget_Cfg", Callback=function(v) expeditionTarget = (type(v)=="table" and v.Title) or v end}))
 FM_Add("Stronger", MainTab:Dropdown({Title="Auto Hatch (Star)", Values=MapList, Value="None", Flag="HatchTarget_Cfg", Callback=function(v) targetStar = (type(v)=="table" and v.Title) or v end}))
 
+-- ============================================================================
+--  AVATARS FEATURE (ENHANCED ICON & STATS)
+-- ============================================================================
+
+-- ============================================================================
+--  AVATARS FEATURE (DUAL DROPDOWN & CONFIG SAVE)
+-- ============================================================================
+
+local avatarStatsUI -- Object Dropdown Stats
+local avatarVisualUI -- Object Dropdown Visual
+
+-- Helper: Hitung Power Asli
+local function GetAvatarTotalPower(avatarName, currentLevel)
+    local db = GlobalAvatarDB[avatarName]
+    if not db or not db.Perks or not db.Perks.Power then return 0 end
+    
+    local baseAmountStr = db.Perks.Power.Amount
+    local basePower = ParseAbbreviated(tostring(baseAmountStr)) or 0
+    
+    local level = currentLevel or 1
+    local multiplier = 1 + ((level - 1) * 0.1)
+    
+    return basePower * multiplier
+end
+
+-- Fungsi Refresh List Dropdown (Update KEDUA Dropdown)
+local function RefreshAvatarList()
+    local pData = getgenv().PlayerData
+    local listItems = {}
+    
+    if pData and pData.Avatars and GlobalAvatarDB and GlobalMapDB then
+        -- 1. Kelompokkan Avatar berdasarkan World (Map)
+        local avatarsByWorld = {}
+        
+        for name, data in pairs(pData.Avatars) do
+            local globalData = GlobalAvatarDB[name]
+            if globalData then
+                local worldName = globalData.World or "Unknown"
+                
+                if not avatarsByWorld[worldName] then
+                    avatarsByWorld[worldName] = {}
+                end
+                
+                local baseAmountStr = globalData.Perks.Power.Amount
+                local basePower = ParseAbbreviated(tostring(baseAmountStr)) or 0
+                local level = data.Level or 1
+                local totalPower = GetAvatarTotalPower(name, level)
+                local formattedTotal = string.format("%.2f", totalPower)
+
+                table.insert(avatarsByWorld[worldName], {
+                    Title = name, 
+                    Desc = "Lvl " .. level .. " | Power: " .. formattedTotal .. "x", 
+                    Value = name,
+                    Icon = globalData.Icon, 
+                    BasePower = basePower
+                })
+            end
+        end
+
+        -- 2. Sortir Map
+        local sortedMaps = {}
+        for mapName, mapData in pairs(GlobalMapDB) do
+            if avatarsByWorld[mapName] then
+                table.insert(sortedMaps, {Name = mapName, Index = mapData.Index or 999})
+            end
+        end
+        table.sort(sortedMaps, function(a, b) return a.Index < b.Index end)
+
+        -- 3. Susun Final List
+        for _, mapInfo in ipairs(sortedMaps) do
+            local mapName = mapInfo.Name
+            local avatarsInMap = avatarsByWorld[mapName]
+            
+            -- Sort Avatar: Base Power Kecil -> Besar
+            table.sort(avatarsInMap, function(a, b) 
+                return a.BasePower < b.BasePower 
+            end)
+            
+            for _, avatarItem in ipairs(avatarsInMap) do
+                avatarItem.Desc = avatarItem.Desc
+                table.insert(listItems, avatarItem)
+            end
+        end
+    end
+    
+    -- Update Dropdown Stats
+    if avatarStatsUI and avatarStatsUI.Refresh then 
+        avatarStatsUI:Refresh(listItems) 
+    end
+
+    -- Update Dropdown Visual
+    if avatarVisualUI and avatarVisualUI.Refresh then 
+        avatarVisualUI:Refresh(listItems) 
+    end
+end
+
+-- [UI Elements]
+local AvatarGroup = MainTab:Group({Title = "Avatar Manager"})
+FM_Add("Avatars", AvatarGroup)
+
+-- 1. DROPDOWN EQUIP STATS
+avatarStatsUI = MainTab:Dropdown({
+    Title = "Equip Stats (Power)",
+    Desc = "Select avatar for stats multiplier",
+    Values = {}, 
+    AllowNone = true,
+    Multi = false,
+    Flag = "AvatarStats_Select", 
+    Callback = function(v)
+        if v then
+             local val = (type(v) == "table" and v.Value) or v
+             
+             -- [OPTIMISASI] Cek apakah avatar ini sudah terpasang di stats?
+             local currentEquipped = getgenv().PlayerData and getgenv().PlayerData.Avatar
+             
+             if currentEquipped ~= val then
+                 ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "Avatars", "Equip", val, n = 4}, "\2"})
+                 Notify("Stats", "Equipped: " .. val, "swords")
+             end
+        end
+    end
+})
+FM_Add("Avatars", avatarStatsUI)
+
+-- 2. DROPDOWN EQUIP VISUAL
+avatarVisualUI = MainTab:Dropdown({
+    Title = "Equip Visual (Cosmetic)",
+    Desc = "Select avatar for appearance only",
+    Values = {}, 
+    AllowNone = true,
+    Multi = false,
+    Flag = "AvatarVisual_Select",
+    Callback = function(v)
+        if v then
+             local val = (type(v) == "table" and v.Value) or v
+             
+             -- [OPTIMISASI] Cek apakah avatar visual ini sudah terpasang?
+             local currentVisual = getgenv().PlayerData and getgenv().PlayerData.AvatarVisual
+             
+             if currentVisual ~= val then
+                 ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "Avatars", "Visual", val, n = 4}, "\2"})
+                 Notify("Visual", "Appearance: " .. val, "eye")
+             end
+        end
+    end
+})
+FM_Add("Avatars", avatarVisualUI)
+
+-- [REALTIME CHECKER SYSTEM]
+task.spawn(function()
+    local lastDataSignature = ""
+    
+    -- Tunggu sebentar sampai UI load, lalu refresh list pertama kali
+    task.wait(1)
+    RefreshAvatarList()
+
+    while not Window.Destroyed do
+        local pData = getgenv().PlayerData
+        if pData and pData.Avatars then
+            -- Buat Signature unik: Nama1:Level1|Nama2:Level2|
+            local currentSig = ""
+            local keys = {}
+            for k in pairs(pData.Avatars) do table.insert(keys, k) end
+            table.sort(keys) 
+            
+            for _, k in ipairs(keys) do
+                local lvl = pData.Avatars[k].Level or 1
+                currentSig = currentSig .. k .. ":" .. lvl .. "|"
+            end
+            
+            -- Cek Perubahan (Jika level up atau dapat avatar baru)
+            if currentSig ~= lastDataSignature then
+                lastDataSignature = currentSig
+                RefreshAvatarList()
+            end
+        end
+        task.wait(1) -- Cek setiap 1 detik
+    end
+end)
 -- SETTINGS TAB
 local SettingsTab = Window:Tab({Title = "Settings", Icon = "settings-2"})
 local ConfigSection = SettingsTab:Section({Title = "Config Manager", Icon = "save", Opened = true})
