@@ -327,29 +327,27 @@ local function LoadGameData()
 end
 LoadGameData()
 
+-- ============================================================================
+--  DATA LOADER & HELPERS (UPDATED)
+-- ============================================================================
+-- Load Module Internal Game
+local NumberUtils = require(game:GetService("ReplicatedStorage").Libs.Utils.Scripts.Number)
+
+-- Wrapper untuk mengubah String (contoh: "1.5K") menjadi Angka (1500)
+-- Menggunakan fungsi .Unformat dari game
 local function ParseAbbreviated(str)
-    if type(str) ~= "string" then return 0 end
-    local num = tonumber(string.match(str, "^[%d%.]+")) or 0
-    local suffix = string.match(str, "[%a]+$")
-    local mult = 1
-    if suffix == "K" then mult = 1e3
-    elseif suffix == "M" then mult = 1e6
-    elseif suffix == "B" then mult = 1e9
-    elseif suffix == "T" then mult = 1e12
-    elseif suffix == "Qd" then mult = 1e15
-    elseif suffix == "Qn" then mult = 1e18
-    end
-    return num * mult
+    if type(str) == "number" then return str end
+    if not str then return 0 end
+    -- Arg1 nil karena fungsi aslinya: function(arg1, arg2)
+    return NumberUtils.Unformat(nil, str) 
 end
 
+-- Wrapper untuk mengubah Angka (1500) menjadi String (contoh: "1.5K")
+-- Menggunakan fungsi .Format dari game
 local function FormatNumber(n)
-    if n >= 1e18 then return string.format("%.2fQn", n/1e18)
-    elseif n >= 1e15 then return string.format("%.2fQd", n/1e15)
-    elseif n >= 1e12 then return string.format("%.2fT", n/1e12)
-    elseif n >= 1e9 then return string.format("%.2fB", n/1e9)
-    elseif n >= 1e6 then return string.format("%.2fM", n/1e6)
-    elseif n >= 1e3 then return string.format("%.2fK", n/1e3)
-    else return tostring(n) end
+    if not n then return "0" end
+    -- Arg1 nil karena fungsi aslinya: function(arg1, arg2)
+    return NumberUtils.Format(nil, n)
 end
 
 -- ============================================================================
