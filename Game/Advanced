@@ -169,14 +169,6 @@ local targetWaveRaid = 50
 local isRaid = false
 local raidJoinList = {{name = "Raid", time = 0}} 
 
--- [DYNAMIC GACHA DATA SYSTEM]
-local powerList = {}       
-local PowerToggles = {}    
--- [TALENT SYSTEM VARS]
-local TalentRankList = {'F', 'E', 'D', 'C', 'B', "A-", 'A'} -- Sesuai Script 2 (Machines.Talents)
-local TalentTargets = {} -- Menyimpan pilihan user
-local FormattedTalentTargets = {} -- Dictionary untuk dikirim ke server {["A"]=true}
-
 -- Helper untuk Cek Map Unlocked
 local function IsMapUnlocked(mapName)
     if not mapName or mapName == "Global" then return true end
@@ -188,43 +180,6 @@ local function IsMapUnlocked(mapName)
     end
     return false
 end
-
-local function LoadDynamicGachaList()
-    table.clear(powerList) 
-    
-    local MachinesFolder = game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Gacha"):WaitForChild("Machines")
-    
-    if MachinesFolder then
-        for _, module in pairs(MachinesFolder:GetChildren()) do
-            if module:IsA("ModuleScript") then
-                local success, data = pcall(function() return require(module) end)
-                
-                if success and type(data) == "table" and data.Item then
-                    local writableData = {}
-                    for k, v in pairs(data) do
-                        writableData[k] = v
-                    end
-                    
-                    writableData.auto = false
-                    writableData.allow = true
-                    writableData.Map = data.Map or "Global"
-                    
-                    -- [MODIFIKASI: Deteksi jika ini adalah Talents]
-                    if data.Name == "Talents" then
-                         writableData.IsTalent = true
-                    else
-                         writableData.IsTalent = false
-                    end
-                    
-                    table.insert(powerList, writableData)
-                end
-            end
-        end
-    end
-    table.sort(powerList, function(a, b) return a.Name < b.Name end)
-end
-
-task.spawn(LoadDynamicGachaList)
 
 -- World Upgrades Vars
 local wu_SelectedMap = "Current Map"
@@ -275,24 +230,9 @@ local GlobalWorldUpgradeDB = {}
 local GlobalUpgradeSystemsDB = {} -- [TAMBAHAN BARU]
 local GlobalGradientDB = {} -- [TAMBAHAN BARU]
 -- [TAMBAHAN] Global Variable untuk menyimpan Data Source Gacha
-local GlobalGachaSources = {}
 local GlobalHeroesExpeditionDB = {}
 
 -- Masukkan ini ke dalam fungsi LoadGameData() yang sudah ada, atau taruh di bawahnya
-local function LoadGachaSources()
-    local SourcesFolder = ReplicatedStorage.Shared.Gacha.Sources
-    if SourcesFolder then
-        for _, module in pairs(SourcesFolder:GetChildren()) do
-            if module:IsA("ModuleScript") then
-                local s, r = pcall(function() return require(module) end)
-                if s and type(r) == "table" then
-                    GlobalGachaSources[module.Name] = r
-                end
-            end
-        end
-    end
-end
-LoadGachaSources()
 local function LoadGameData()
     local successBoss, resultBoss = pcall(function() return require(ReplicatedStorage.Shared.Enemies["Global Bosses"]) end)
     if successBoss and type(resultBoss) == "table" then
@@ -977,139 +917,6 @@ end
 -- [UPDATED GACHA LOGIC WITH DYNAMIC CHECK & BALANCE PROTECTION]
 local function changePower(name, value) for _, power in pairs(powerList) do if power.Name == name then power.auto = value return end end end
 
--- [GACHA LOGIC LOOP - UPDATED WITH CHECKS]
-local lastGachaVisuals = {} 
-
-task.spawn(function()
-    while not Window.Destroyed do
-        for _, power in pairs(powerList) do
-            local pData = getgenv().PlayerData
-            
-            -- 1. UPDATE VISUAL TOGGLE
-            if pData and pData.Gacha and pData.Gacha[power.Name] then
-                local currentItemName = pData.Gacha[power.Name].Current
-                
-                -- Cek apakah item berbeda dari cache visual terakhir
-                if currentItemName then
-                    local sourceName = power.Source 
-                    local sourceDB = GlobalGachaSources[sourceName]
-                    
-                    if sourceDB and sourceDB[currentItemName] then
-                        local itemData = sourceDB[currentItemName]
-                        
-                        -- Siapkan Gradient
-                        local rarityColor = {Base = Color3.new(0.5, 0.5, 0.5), Wave = Color3.new(0.3, 0.3, 0.3)}
-                        if GlobalGradientDB and GlobalGradientDB.GetRarityColor then
-                            local rData = GlobalGradientDB:GetRarityColor(itemData.Rarity)
-                            if rData then rarityColor = rData end
-                        end
-                        
-                        local gradientObj = ColorSequence.new({
-                            ColorSequenceKeypoint.new(0, rarityColor.Base),
-                            ColorSequenceKeypoint.new(1, rarityColor.Wave)
-                        })
-                        
-                        -- [PENGECEKAN TAMBAHAN]
-                        -- Pastikan Title (currentItemName) valid dan Gradient sudah terbentuk
-                        if currentItemName and gradientObj then
-                            
-                            if PowerToggles[power.Name] then
-                                PowerToggles[power.Name]:SetMainImage({
-                                    Title = currentItemName,           -- Nama Item di Bawah
-                                    Image = itemData.Icon,
-                                    Gradient = gradientObj
-                                }, 50)
-                                
-                                -- HANYA update cache jika SetMainImage berhasil dilakukan (syarat terpenuhi)
-                                lastGachaVisuals[power.Name] = currentItemName
-                            end
-                        end
-                    end
-                end
-            end
-
-            -- 2. LOGIKA AUTO ROLL
-            local balance = 0
-            if pData and pData.Items then balance = pData.Items[power.Item] or 0 end
-            
-            local currentPrice = power.Price or 0
-            if power.IsTalent and pData and pData.Gacha and pData.Gacha.Talents then
-                local lockedData = pData.Gacha.Talents.Locked or {}
-                local lockedCount = 0
-                for _, isLocked in pairs(lockedData) do
-                    if isLocked then lockedCount = lockedCount + 1 end
-                end
-                currentPrice = currentPrice + lockedCount
-            end
-
-            if power.auto == true then 
-                -- Cek Map Unlock
-                if not IsMapUnlocked(power.Map) and not power.allow then
-                    if PowerToggles[power.Name] then PowerToggles[power.Name]:Unlock() end
-                end
-
-                -- Cek Saldo
-                local canAfford = true
-                if power.Item and currentPrice > 0 then
-                    if balance < currentPrice then
-                        canAfford = false
-                        power.auto = false
-                        Notify("Gacha", "Not enough " .. power.Item .. "! Stopping " .. power.Name, "x")
-                        if PowerToggles[power.Name] then PowerToggles[power.Name]:Set(false) end
-                    end
-                end
-
-                -- Eksekusi Roll
-                if canAfford then
-                    local args = {}
-                    
-                    if power.IsTalent then
-                        local tData = pData.Gacha.Talents
-                        local currents = tData.Currents or {}
-                        local locked = tData.Locked or {}
-                        local allLocked = true
-                        local hasStats = false
-                        
-                        for statName, _ in pairs(currents) do
-                            hasStats = true
-                            if not locked[statName] then
-                                allLocked = false
-                                break
-                            end
-                        end
-                        
-                        if hasStats and allLocked then
-                            power.auto = false
-                            if PowerToggles[power.Name] then PowerToggles[power.Name]:Set(false) end
-                            Notify("System", "All Talents Locked! Auto Stopped.", "check")
-                        else
-                            args = {{"General", "Gacha", "Roll", power.Name, FormattedTalentTargets, n = 5}, "\2"}
-                            ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer(args) 
-                        end
-                    else
-                        args = {{"General", "Gacha", "Roll", power.Name, {}, n = 5}, "\2"}
-                        ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer(args) 
-                    end
-                end
-            end
-            
-            -- Update Deskripsi Harga
-            if PowerToggles[power.Name] and IsMapUnlocked(power.Map) then
-                if power.IsTalent then
-                      local count = 0
-                      for _ in pairs(FormattedTalentTargets) do count = count + 1 end
-                      PowerToggles[power.Name]:SetDesc("Price: "..currentPrice.." | Targets: "..count)
-                else
-                      PowerToggles[power.Name]:SetDesc("Cost: "..currentPrice.."\n"..power.Item..": "..FormatNumber(balance))
-                end
-            elseif PowerToggles[power.Name] then
-                PowerToggles[power.Name]:SetDesc("LOCKED: Need Unlock Map " .. power.Map)
-            end
-        end
-        task.wait(0.5)
-    end
-end)
-
 task.spawn(function()
     while not Window.Destroyed do
         if targetStar and targetStar ~= "None" then
@@ -1215,22 +1022,26 @@ local FM_Categories = {}
 local function FM_Add(cat, elem) if not FM_Categories[cat] then FM_Categories[cat]={} end table.insert(FM_Categories[cat], elem) local f=rawget(elem,"ElementFrame") or (elem.UIElements and elem.UIElements.Main) or elem.GroupFrame if f then f.Visible=false end return elem end
 local function FM_OnChange(selected) for name, elems in pairs(FM_Categories) do local vis=(name==selected) for _, e in ipairs(elems) do local f=rawget(e,"ElementFrame") or (e.UIElements and e.UIElements.Main) or e.GroupFrame if f then f.Visible=vis end end end end
 
+-- Cari bagian ini di script Anda dan tambahkan baris "Enchant"
 local FM_Category = MainTab:Category({
-    Title = "Select Category", Default = "Farm",
+    Title = "Select Category", 
+    Default = "Farm",
     Options = {
         {Title="Farm", Icon="sword"},
-        {Title="Gamemodes", Icon="hourglass"}, 
-        {Title="Bosses", Icon="skull"}, 
+        {Title="Gamemodes", Icon="hourglass"},
+        {Title="Bosses", Icon="skull"},
         {Title="Gacha", Icon="dices"},
         {Title="Avatars", Icon="user"},
-        {Title="World Upgrade", Icon="globe"}, 
+        {Title="World Upgrade", Icon="globe"},
         {Title="Trial Upgrades", Icon="zap"},
-        {Title="Upgrade Rank", Icon="chevrons-up"}, 
-        {Title="Expedition", Icon="compass"}, -- <--- TAMBAHAN BARU DISINI
+        {Title="Upgrade Rank", Icon="chevrons-up"},
+        {Title="Expedition", Icon="compass"},
+        {Title="Enchant", Icon="sparkles"}, -- <--- TAMBAHKAN INI (Baris Baru)
         {Title="Stronger", Icon="star"}
     },
     Callback = FM_OnChange
 })
+
 if FM_Category.ElementFrame then 
     FM_Category.ElementFrame.Parent = MainTab.UIElements.ContainerFrameCanvas 
     FM_Category.ElementFrame.Position = UDim2.new(0,0,0, MainTab.UIElements.ContainerFrame.Position.Y.Offset)
@@ -1573,63 +1384,6 @@ task.spawn(function()
         task.wait(0.5) 
     end
 end)
--- GACHA UI CREATION
--- [TAMBAHAN UI TALENT TARGET]
-
--- Loop Tombol Gacha Otomatis
-local currentGachaGroup
-for i, power in ipairs(powerList) do 
-    if i % 2 == 1 then
-        currentGachaGroup = MainTab:Group({})
-        FM_Add("Gacha", currentGachaGroup)
-    end
-
-    local titleStr = power.Name
-    if power.IsTalent then titleStr = "Auto " .. power.Name .. " (Use Target!)" end
-
-    local tgl = currentGachaGroup:Toggle({
-        Title = titleStr, 
-        Flag = "Power_" .. power.Name,
-        Image = power.Icon,
-        ImageSize = 24,
-        Callback = function(v) changePower(power.Name, v) end
-    })
-    
-    -- [LOCK SYSTEM INIT]
-    if not IsMapUnlocked(power.Map) then
-        if tgl.Lock then 
-             tgl:Lock(true)
-             power.allow = false
-             tgl:SetDesc("LOCKED: Need Unlock Map " .. power.Map)
-        end
-    end
-
-    PowerToggles[power.Name] = tgl
-end
-
-local TalentGroup = MainTab:Group({Title = "Talent Settings"})
--- FM_Add("Gacha", TalentGroup)
-
-FM_Add("Gacha", TalentGroup:Dropdown({
-    Title = "Talent Target",
-    Desc = "Select Auto Lock Talents Stats if already fulfilled",
-    Values = TalentRankList,
-    Multi = true,
-    Flag = "TalentTargets_Cfg",
-    Callback = function(v)
-        TalentTargets = v
-        -- Konversi Array ke Dictionary untuk Server (PENTING!)
-        -- Contoh: User pilih {"A", "B"} -> Code ubah jadi {["A"]=true, ["B"]=true}
-        table.clear(FormattedTalentTargets)
-        if type(v) == "table" then
-            for _, rankName in ipairs(v) do
-                FormattedTalentTargets[rankName] = true
-            end
-        else
-            FormattedTalentTargets[v] = true
-        end
-    end
-}))
 
 -- ============================================================================
 --  WORLD UPGRADE UI (SORTED & NO CURRENT MAP)
@@ -1843,6 +1597,431 @@ task.spawn(function()
     end
 end)
 
+
+
+-- ============================================================================
+--  GACHA SYSTEM (FIXED: SWORD PASSIVE 2-COLUMN GRID)
+-- ============================================================================
+
+-- [1. VARIABLES & DATA STORAGE]
+local GlobalGachaSources = {} 
+local powerList = {}        
+local PowerToggles = {}
+local selectedGachaSwordSID = nil
+local SwordPassiveTargets = {} 
+local TalentRankList = {'F', 'E', 'D', 'C', 'B', "A-", 'A'} 
+local FormattedTalentTargets = {}
+
+-- Load Database Game
+local function LoadGachaSources()
+    local SourcesFolder = game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Gacha"):WaitForChild("Sources")
+    if SourcesFolder then
+        for _, module in pairs(SourcesFolder:GetChildren()) do
+            if module:IsA("ModuleScript") then
+                local s, r = pcall(function() return require(module) end)
+                if s and type(r) == "table" then
+                    GlobalGachaSources[module.Name] = r
+                end
+            end
+        end
+    end
+end
+LoadGachaSources()
+
+-- Helper: Ambil List Pedang (UPDATED: Added Gradient Support)
+local function GetGachaSwordList()
+    local list = {}
+    local pData = getgenv().PlayerData
+    if pData and pData.SwordsEquipped and pData.Swords then
+        for sid, _ in pairs(pData.SwordsEquipped) do
+            local swordData = pData.Swords[sid]
+            if swordData then
+                local name = swordData.Name
+                local currentPassive = swordData.Passive or "None"
+                local rarity = swordData.Rarity or "Common"
+                
+                local iconId = "rbxassetid://84366761557806"
+                if GlobalSwordDB and GlobalSwordDB[name] then iconId = GlobalSwordDB[name].Icon end
+
+                -- [BARU] Generate Gradient berdasarkan Rarity untuk Card UI
+                local gradientObj = nil
+                if GlobalGradientDB and GlobalGradientDB.GetRarityColor then
+                    local colors = GlobalGradientDB:GetRarityColor(rarity)
+                    if colors and colors.Base and colors.Wave then
+                         gradientObj = ColorSequence.new{
+                            ColorSequenceKeypoint.new(0, colors.Base),
+                            ColorSequenceKeypoint.new(1, colors.Wave)
+                        }
+                    end
+                end
+
+                table.insert(list, {
+                    Title = string.format("%s [%s]", name, currentPassive),
+                    Desc = "Rarity: " .. rarity,
+                    Value = sid, 
+                    Icon = iconId,
+                    Gradient = gradientObj -- Data Gradient ditambahkan ke list
+                })
+            end
+        end
+        table.sort(list, function(a,b) return a.Title < b.Title end)
+    end
+    return list
+end
+
+-- Helper: Ambil List Passive (Index)
+local function GetSwordPassiveIndexList()
+    local list = {}
+    local sourceDB = GlobalGachaSources["Sword Passives"] -- Plural 's'
+    
+    if sourceDB then
+        for name, data in pairs(sourceDB) do
+            local perksVal = data.Perks or 0
+            local statsDesc = string.format("Perks: x%s", tostring(perksVal))
+            
+            local gradientObj = nil
+            if GlobalGradientDB and GlobalGradientDB.GetRarityColor then
+                local colors = GlobalGradientDB:GetRarityColor(data.Rarity or "Common")
+                if colors and colors.Base and colors.Wave then
+                     gradientObj = ColorSequence.new{
+                        ColorSequenceKeypoint.new(0, colors.Base),
+                        ColorSequenceKeypoint.new(1, colors.Wave)
+                    }
+                end
+            end
+            
+            table.insert(list, {
+                Title = name, Desc = statsDesc, Value = name,
+                Icon = data.Icon, Gradient = gradientObj,
+                Index = data.Index or 999
+            })
+        end
+        table.sort(list, function(a,b) return a.Index < b.Index end)
+    end
+    return list
+end
+
+-- Loader Daftar Gacha
+local function LoadDynamicGachaList()
+    table.clear(powerList) 
+    local MachinesFolder = game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Gacha"):WaitForChild("Machines")
+    if MachinesFolder then
+        for _, module in pairs(MachinesFolder:GetChildren()) do
+            if module:IsA("ModuleScript") then
+                local success, data = pcall(function() return require(module) end)
+                if success and type(data) == "table" and data.Item then
+                    local writableData = {}
+                    for k, v in pairs(data) do writableData[k] = v end
+                    
+                    writableData.auto = false
+                    writableData.allow = true
+                    writableData.Map = data.Map or "Global"
+                    writableData.IsTalent = (data.Name == "Talents")
+                    
+                    table.insert(powerList, writableData)
+                end
+            end
+        end
+    end
+    table.sort(powerList, function(a, b) return a.Name < b.Name end)
+end
+task.spawn(LoadDynamicGachaList)
+
+-- [2. UI GENERATOR - 2 PER ITEM LAYOUT]
+local currentGachaGroup
+
+for i, power in ipairs(powerList) do 
+    -- KASUS 1: SWORD PASSIVE (CUSTOM GRID)
+    if power.Name == "Sword Passive" then
+        -- Header Section
+        local SPHeader = MainTab:Paragraph({Title = "Sword Passive System", Desc = "Select Sword & Passive Targets below"})
+        FM_Add("Gacha", SPHeader)
+        
+        -- ROW 1 (Toggle & Refresh Button)
+        local Row1 = MainTab:Group({})
+        FM_Add("Gacha", Row1)
+        
+        local spToggle = Row1:Toggle({
+            Title = "Auto Roll", 
+            Flag = "Power_" .. power.Name,
+            Image = power.Icon,
+            Callback = function(v) changePower(power.Name, v) end
+        })
+        PowerToggles[power.Name] = spToggle
+        
+        -- Forward declare variable untuk dropdown agar bisa direfresh tombol
+        local SwordDD 
+        
+        Row1:Button({
+            Title = "Refresh Swords",
+            Icon = "refresh-cw",
+            Callback = function() if SwordDD then SwordDD:Refresh(GetGachaSwordList()) end end
+        })
+
+        -- ROW 2 (Dropdown Sword & Dropdown Target)
+        local Row2 = MainTab:Group({})
+        FM_Add("Gacha", Row2)
+
+        SwordDD = Row2:Dropdown({
+            Title = "Target Sword",
+            Values = GetGachaSwordList(),
+            Value = nil,
+            Flag = "Gacha_SwordSelect",
+            Callback = function(v)
+                selectedGachaSwordSID = (type(v) == "table" and v.Value) or v
+                
+                -- [VISUAL UPDATE] Logika Icon + Gradient (Seperti Select Equipped Sword)
+                if type(v) == "table" and v.Icon and SwordDD then
+                    -- 1. Set Icon Kanan (Value)
+                    if SwordDD.SetValueImage then SwordDD:SetValueImage(v.Icon) end
+
+                    -- 2. Set Icon Kiri (Main) dengan Gradient jika ada
+                    if SwordDD.SetMainImage then
+                        if v.Gradient then
+                            SwordDD:SetMainImage({
+                                Image = v.Icon,
+                                Gradient = v.Gradient
+                            }, 50)
+                        else
+                            SwordDD:SetMainImage(v.Icon)
+                        end
+                    end
+                else
+                    -- Reset ke Default jika tidak ada pilihan
+                    if SwordDD.SetMainImage then SwordDD:SetMainImage("rbxassetid://84366761557806") end
+                    if SwordDD.SetValueImage then SwordDD:SetValueImage("rbxassetid://84366761557806") end
+                end
+
+                if PowerToggles["Sword Passive"] then
+                      local sName = (type(v) == "table" and v.Title) or "Unknown"
+                      PowerToggles["Sword Passive"]:SetDesc("Target: " .. sName)
+                end
+            end
+        })
+
+        Row2:Dropdown({
+            Title = "Passive Index",
+            Values = GetSwordPassiveIndexList(),
+            Multi = true,
+            Flag = "Gacha_PassiveTargets",
+            Callback = function(values)
+                table.clear(SwordPassiveTargets)
+                if type(values) == "table" then
+                    for _, item in ipairs(values) do
+                        local pName = (type(item) == "table" and item.Value) or item
+                        SwordPassiveTargets[pName] = true
+                    end
+                end
+            end
+        })
+
+    -- KASUS 2: GACHA BIASA (Standard Grid)
+    else
+        -- Buat Group Baru setiap 2 item
+        if (i - (powerList[1].Name == "Sword Passive" and 1 or 0)) % 2 == 1 then
+            currentGachaGroup = MainTab:Group({})
+            FM_Add("Gacha", currentGachaGroup)
+        end
+
+        local titleStr = power.Name
+        if power.IsTalent then titleStr = "Auto " .. power.Name end
+
+        local tgl = currentGachaGroup:Toggle({
+            Title = titleStr, 
+            Flag = "Power_" .. power.Name,
+            Image = power.Icon,
+            ImageSize = 24,
+            Callback = function(v) changePower(power.Name, v) end
+        })
+        
+        if not IsMapUnlocked(power.Map) then
+            if tgl.Lock then 
+                 tgl:Lock(true)
+                 power.allow = false
+                 tgl:SetDesc("LOCKED: " .. power.Map)
+            end
+        end
+        PowerToggles[power.Name] = tgl
+    end
+end
+
+-- Talent Target Dropdown
+local TalentGroup = MainTab:Group({Title = "Talent Settings"})
+FM_Add("Gacha", TalentGroup)
+
+FM_Add("Gacha", TalentGroup:Dropdown({
+    Title = "Talent Target",
+    Desc = "Select stats to Lock automatically",
+    Values = TalentRankList,
+    Multi = true,
+    Flag = "TalentTargets_Cfg",
+    Callback = function(v)
+        table.clear(FormattedTalentTargets)
+        if type(v) == "table" then
+            for _, rankName in ipairs(v) do FormattedTalentTargets[rankName] = true end
+        else
+            FormattedTalentTargets[v] = true
+        end
+    end
+}))
+
+
+-- [3. LOGIC LOOP GACHA - FIXED & DEBUGGED]
+task.spawn(function()
+    while not Window.Destroyed do
+        for _, power in pairs(powerList) do
+            local pData = getgenv().PlayerData
+            
+            -- [A] Update Visual Toggle (Icon & Description)
+            if pData and pData.Gacha and pData.Gacha[power.Name] then
+                local currentItemName = pData.Gacha[power.Name].Current
+                if currentItemName and PowerToggles[power.Name] then
+                      local sourceName = power.Source 
+                      if power.Name == "Sword Passive" then sourceName = "Sword Passives" end
+                      
+                      local sourceDB = GlobalGachaSources[sourceName]
+                      if sourceDB and sourceDB[currentItemName] then
+                        local itemData = sourceDB[currentItemName]
+                        local gradientObj = nil
+                        if GlobalGradientDB and GlobalGradientDB.GetRarityColor then
+                            local rData = GlobalGradientDB:GetRarityColor(itemData.Rarity or "Common")
+                            if rData then 
+                                gradientObj = ColorSequence.new{
+                                    ColorSequenceKeypoint.new(0, rData.Base), 
+                                    ColorSequenceKeypoint.new(1, rData.Wave)
+                                }
+                            end
+                        end
+                        if gradientObj then
+                            PowerToggles[power.Name]:SetMainImage({
+                                Title = currentItemName, Image = itemData.Icon, Gradient = gradientObj
+                            }, 50)
+                        end
+                     end
+                end
+            end
+
+            -- [B] Logic Auto Roll
+            local balance = 0
+            if pData and pData.Items then balance = pData.Items[power.Item] or 0 end
+            local currentPrice = power.Price or 0
+            
+            -- Hitung harga Talent (termasuk locked slots)
+            if power.IsTalent and pData and pData.Gacha and pData.Gacha.Talents then
+                local lockedData = pData.Gacha.Talents.Locked or {}
+                local lockedCount = 0
+                for _, isLocked in pairs(lockedData) do if isLocked then lockedCount = lockedCount + 1 end end
+                currentPrice = currentPrice + lockedCount
+            end
+
+            -- HANYA JALANKAN LOGIKA JIKA TOGGLE MENYALA (AUTO = TRUE)
+            if power.auto == true then 
+                local canAfford = true
+                
+                -- Cek Saldo
+                if power.Item and currentPrice > 0 and balance < currentPrice then
+                    canAfford = false
+                    power.auto = false
+                    Notify("Gacha", "Not enough " .. power.Item, "x")
+                    if PowerToggles[power.Name] then PowerToggles[power.Name]:Set(false) end
+                end
+
+                if canAfford then
+                    local args = {}
+                    local stopRolling = false -- Flag untuk menghentikan pengiriman sinyal
+                    
+                    -- === [LOGIKA KHUSUS SWORD PASSIVE] ===
+                    if power.Name == "Sword Passive" then
+                        if not selectedGachaSwordSID then
+                            power.auto = false
+                            if PowerToggles[power.Name] then PowerToggles[power.Name]:Set(false) end
+                            Notify("Gacha", "Select a Sword First!", "x")
+                            stopRolling = true
+                        else
+                            -- Ambil Data Pedang Saat Ini
+                            local currentSwordData = pData.Swords and pData.Swords[selectedGachaSwordSID]
+                            
+                            if currentSwordData then
+                                local myPassive = currentSwordData.Passive or "None"
+                                
+                                -- DEBUG: Print ke Console (F9) untuk memastikan nama pasif sama persis
+                                -- print("Current Passive:", myPassive, "| Targets:", HttpService:JSONEncode(SwordPassiveTargets))
+                                
+                                -- CEK TARGET: Apakah Passive saat ini ada di dalam tabel target?
+                                if SwordPassiveTargets[myPassive] == true then
+                                    stopRolling = true
+                                    power.auto = false -- Matikan Loop Internal
+                                    
+                                    -- Matikan Toggle UI
+                                    if PowerToggles[power.Name] then 
+                                        PowerToggles[power.Name]:Set(false) 
+                                    end
+                                    
+                                    Notify("Gacha", "STOP: Got " .. myPassive .. "!", "check")
+                                end
+                            else
+                                -- Jika data pedang tiba-tiba hilang (unequip/error)
+                                stopRolling = true
+                            end
+                            
+                            -- Jika STOPROLLING masih false, baru kita roll
+                            if not stopRolling then
+                                args = {{"General", "Gacha", "Roll", power.Name, selectedGachaSwordSID, SwordPassiveTargets, n = 6}, "\2"}
+                                ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer(args)
+                            end
+                        end
+
+                    -- === [LOGIKA TALENT] ===
+                    elseif power.IsTalent then
+                        local tData = pData.Gacha.Talents
+                        local currents = tData.Currents or {}
+                        local locked = tData.Locked or {}
+                        local allLocked = true
+                        -- Cek apakah semua slot sudah terkunci
+                        for statName, _ in pairs(currents) do if not locked[statName] then allLocked = false break end end
+                        
+                        if allLocked then
+                            power.auto = false
+                            if PowerToggles[power.Name] then PowerToggles[power.Name]:Set(false) end
+                            Notify("System", "All Talents Locked!", "check")
+                        else
+                            args = {{"General", "Gacha", "Roll", power.Name, FormattedTalentTargets, n = 5}, "\2"}
+                            ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer(args) 
+                        end
+
+                    -- === [LOGIKA STANDARD GACHA (AURA DLL)] ===
+                    else
+                        args = {{"General", "Gacha", "Roll", power.Name, {}, n = 5}, "\2"}
+                        ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer(args) 
+                    end
+                end
+            end
+            
+            -- [C] Update Description UI (Info Harga & Status)
+            if PowerToggles[power.Name] and IsMapUnlocked(power.Map) then
+                if power.Name == "Sword Passive" then
+                      local tCount = 0
+                      for _ in pairs(SwordPassiveTargets) do tCount = tCount + 1 end
+                      
+                      -- Ambil nama pasif saat ini untuk ditampilkan di deskripsi
+                      local currentPassiveTxt = "None"
+                      if selectedGachaSwordSID and pData.Swords and pData.Swords[selectedGachaSwordSID] then
+                          currentPassiveTxt = pData.Swords[selectedGachaSwordSID].Passive or "None"
+                      end
+                      
+                      PowerToggles[power.Name]:SetDesc("Price: "..currentPrice.." | Targets: "..tCount.."\nCurrent: "..currentPassiveTxt)
+                elseif power.IsTalent then
+                      local count = 0
+                      for _ in pairs(FormattedTalentTargets) do count = count + 1 end
+                      PowerToggles[power.Name]:SetDesc("Price: "..currentPrice.." | Targets: "..count)
+                else
+                      PowerToggles[power.Name]:SetDesc("Cost: "..currentPrice.."\n"..power.Item..": "..FormatNumber(balance))
+                end
+            end
+        end
+        task.wait(0.5) -- Delay loop agar tidak spam/crash
+    end
+end)
 -- STRONGER
 -- [REMOVED EXPEDITION OLD UI]
 FM_Add("Stronger", MainTab:Dropdown({Title="Auto Hatch (Star)", Values=MapList, Value="None", Flag="HatchTarget_Cfg", Callback=function(v) targetStar = (type(v)=="table" and v.Title) or v end}))
@@ -2221,6 +2400,299 @@ task.spawn(function()
         task.wait(1)
     end
 end)
+
+-- ============================================================================
+--  ENCHANTMENT SYSTEM (SMART REFRESH + VISUAL UPDATE)
+-- ============================================================================
+
+-- 1. Setup Dynamic Database
+local EnchantmentDB = {}
+
+local function LoadDynamicEnchantmentDB()
+    local success, result = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Shared.SwordEnchantments)
+    end)
+    
+    if success and type(result) == "table" then
+        EnchantmentDB = result
+    end
+end
+
+LoadDynamicEnchantmentDB()
+
+-- Variables Logic
+local selectedEnchantSID = nil
+local isAutoEmpower = false
+local EnchantStatusLabel -- Forward declaration
+local EnchantDropdown -- Forward declaration
+
+-- Helper: Ambil Daftar Pedang yang Dipakai (Hanya dari SwordsEquipped)
+local function GetEquippedSwordList()
+    local list = {}
+    local pData = getgenv().PlayerData
+    
+    -- Cek data SwordsEquipped dan Swords
+    if pData and pData.SwordsEquipped and pData.Swords then
+        for sid, _ in pairs(pData.SwordsEquipped) do
+            local swordData = pData.Swords[sid]
+            if swordData then
+                local name = swordData.Name
+                local rarity = swordData.Rarity or "Common"
+                
+                -- Cek Level Enchant saat ini
+                local enchantInfo = swordData.Enchantment or {}
+                local lvl = enchantInfo.Level or 0
+                local kills = enchantInfo.Kills or 0
+                
+                local displayName = string.format("%s (Lvl %d)", name, lvl)
+                local descStr = string.format("Rarity: %s | Kills: %s", rarity, FormatNumber(kills))
+                
+                -- Ambil Icon dari GlobalSwordDB (Database script utama)
+                local iconId = "rbxassetid://84366761557806" -- Default
+                if GlobalSwordDB and GlobalSwordDB[name] then
+                    iconId = GlobalSwordDB[name].Icon
+                end
+
+                -- Cek Gradient Rarity (Opsional, untuk tampilan Card)
+                local gradientObj = nil
+                if GlobalGradientDB and GlobalGradientDB.GetRarityColor then
+                    local colors = GlobalGradientDB:GetRarityColor(rarity)
+                    if colors and colors.Base and colors.Wave then
+                        gradientObj = ColorSequence.new{
+                            ColorSequenceKeypoint.new(0, colors.Base),
+                            ColorSequenceKeypoint.new(1, colors.Wave)
+                        }
+                    end
+                end
+
+                table.insert(list, {
+                    Title = displayName,
+                    Desc = descStr,
+                    Value = sid, -- Value adalah UUID unik pedang
+                    Icon = iconId,
+                    Gradient = gradientObj, -- Simpan gradient untuk visual dropdown
+                    -- Data tambahan untuk sorting/signature
+                    SortLvl = lvl,
+                    SortKills = kills
+                })
+            end
+        end
+        -- Sortir list berdasarkan Level tertinggi
+        table.sort(list, function(a,b) return a.SortLvl > b.SortLvl end)
+    end
+    return list
+end
+
+-- 2. UI Elements
+
+-- Dropdown Pilihan Pedang
+EnchantDropdown = FM_Add("Enchant", MainTab:Dropdown({
+    Title = "Select Equipped Sword",
+    Desc = "Auto refresh based on your equipped swords.",
+    Values = GetEquippedSwordList(),
+    Value = nil,
+    Flag = "Enchant_SwordSelect",
+    Callback = function(v)
+        -- Handle jika v adalah table (item dropdown) atau value langsung
+        local val = (type(v) == "table" and v.Value) or v
+        selectedEnchantSID = val
+        
+        -- [VISUAL UPDATE] Set Gambar Utama & Value Dropdown
+        if type(v) == "table" and v.Icon and EnchantDropdown then
+             -- Update Gambar Kanan (Value)
+             if EnchantDropdown.SetValueImage then
+                 EnchantDropdown:SetValueImage(v.Icon)
+             end
+             
+             -- Update Gambar Kiri (Main) dengan Gradient jika ada
+             if EnchantDropdown.SetMainImage then
+                 if v.Gradient then
+                     EnchantDropdown:SetMainImage({
+                         Image = v.Icon,
+                         Gradient = v.Gradient
+                     }, 50)
+                 else
+                     EnchantDropdown:SetMainImage(v.Icon)
+                 end
+             end
+             
+             -- Update Deskripsi Dropdown dengan nama pedang yang dipilih
+             EnchantDropdown:SetDesc("Selected: " .. (v.Title or "Unknown"))
+        else
+             -- Reset jika tidak ada pilihan
+             if EnchantDropdown.SetMainImage then
+                 EnchantDropdown:SetMainImage("rbxassetid://84366761557806")
+             end
+             if EnchantDropdown.SetValueImage then
+                 EnchantDropdown:SetValueImage("rbxassetid://84366761557806")
+             end
+             EnchantDropdown:SetDesc("Auto refresh based on your equipped swords.")
+        end
+    end
+}))
+
+-- Status Info (Paragraph)
+EnchantStatusLabel = FM_Add("Enchant", MainTab:Paragraph({
+    Title = "Status: None",
+    Desc = "Select a sword to see enchantment progress.",
+    Image = "rbxassetid://111231588957724"
+}))
+
+-- Toggle Auto Empower
+FM_Add("Enchant", MainTab:Toggle({
+    Title = "Auto Empower (Upgrade)",
+    Desc = "Automatically upgrade sword when kills requirement met.",
+    Flag = "AutoEmpower_Cfg",
+    Callback = function(v) isAutoEmpower = v end
+}))
+
+-- Tombol Manual Empower
+FM_Add("Enchant", MainTab:Button({
+    Title = "Manual Empower",
+    Desc = "Force upgrade immediately.",
+    Icon = "zap",
+    Callback = function()
+        if selectedEnchantSID then
+            ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({
+                {"General", "SwordEnchantments", "Empower", selectedEnchantSID, n = 4},
+                "\2"
+            })
+            Notify("Enchant", "Empower Request Sent!", "zap")
+        else
+            Notify("Enchant", "Select a sword first!", "x")
+        end
+    end
+}))
+
+
+-- 3. Logic Loop (Smart Refresh + Auto Empower)
+task.spawn(function()
+    local lastSwordDataSignature = ""
+
+    while not Window.Destroyed do
+        local pData = getgenv().PlayerData
+        
+        -- [A] SMART REFRESH LOGIC
+        if pData and pData.SwordsEquipped and pData.Swords then
+            -- 1. Buat Signature Unik (Gabungan ID + Level + Kills)
+            -- Signature ini mendeteksi: Ganti Equip, Level Up, atau Kill Bertambah
+            local equipKeys = {}
+            for k in pairs(pData.SwordsEquipped) do table.insert(equipKeys, k) end
+            table.sort(equipKeys)
+
+            local currentSig = ""
+            for _, sid in ipairs(equipKeys) do
+                local sData = pData.Swords[sid]
+                if sData then
+                    local lvl = (sData.Enchantment and sData.Enchantment.Level) or 0
+                    local kills = (sData.Enchantment and sData.Enchantment.Kills) or 0
+                    currentSig = currentSig .. sid .. ":" .. lvl .. ":" .. kills .. "|"
+                end
+            end
+            
+            -- 2. Cek Perubahan
+            if currentSig ~= lastSwordDataSignature then
+                -- 3. LOGIKA PINTU: Hanya refresh jika Dropdown TERBUKA
+                if EnchantDropdown and EnchantDropdown.Opened then
+                    lastSwordDataSignature = currentSig
+                    EnchantDropdown:Refresh(GetEquippedSwordList())
+                    -- print("Enchant Dropdown Refreshed!")
+                end
+                
+                -- Jika dropdown tertutup, kita biarkan signature lama.
+                -- Ini memaksa script untuk terus masuk ke blok 'if' ini di loop selanjutnya
+                -- sampai user membuka dropdown.
+            end
+        end
+
+        -- [B] UPDATE STATUS & AUTO EMPOWER
+        if selectedEnchantSID and pData and pData.Swords then
+            local swordData = pData.Swords[selectedEnchantSID]
+            
+            if swordData then
+                -- Ambil Data
+                local enchantData = swordData.Enchantment or {Kills = 0, Level = 0}
+                local currentLevel = enchantData.Level or 0
+                local currentKills = enchantData.Kills or 0
+                
+                local nextLevelData = EnchantmentDB[currentLevel + 1]
+                local currentLevelData = EnchantmentDB[currentLevel] or EnchantmentDB[0]
+                
+                local statusTitle = ""
+                local statusDesc = ""
+                
+                if nextLevelData then
+                    -- Parsing Kills
+                    local targetKills = nextLevelData.Kills
+                    if type(targetKills) == "string" then
+                         if string.find(targetKills, "K") then
+                             targetKills = tonumber(string.match(targetKills, "[%d%.]+")) * 1000
+                         else
+                             targetKills = tonumber(targetKills) or 999999
+                         end
+                    end
+
+                    local progress = 0
+                    if targetKills > 0 then progress = math.clamp(currentKills / targetKills, 0, 1) end
+                    local percent = math.floor(progress * 100)
+                    
+                    statusTitle = string.format("Lvl %d: %s (%d%%)", currentLevel, currentLevelData.Name or "Unknown", percent)
+                    statusDesc = string.format("Kills: %s / %s\nNext: %s", FormatNumber(currentKills), FormatNumber(targetKills), nextLevelData.Name)
+                    
+                    -- Perks
+                    local perksStr = ""
+                    if currentLevelData.Perks then
+                        for k, v in pairs(currentLevelData.Perks) do
+                            local suffix = (k == "Luck") and "" or "%"
+                            perksStr = perksStr .. " • " .. k .. ": +" .. v .. suffix .."\n"
+                        end
+                    end
+                    if perksStr ~= "" then statusDesc = statusDesc .. "\n\nCurrent Perks:\n" .. perksStr end
+
+                    -- Auto Empower Execution
+                    if isAutoEmpower and currentKills >= targetKills then
+                        ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({
+                            {"General", "SwordEnchantments", "Empower", selectedEnchantSID, n = 4},
+                            "\2"
+                        })
+                        task.wait(2) 
+                    end
+                else
+                    -- Max Level
+                    statusTitle = "MAX LEVEL REACHED"
+                    statusDesc = "Enchantment: " .. (currentLevelData.Name or "Unknown") .. "\nMax Perks Active."
+                    local perksStr = ""
+                    if currentLevelData.Perks then
+                        for k, v in pairs(currentLevelData.Perks) do
+                            local suffix = (k == "Luck") and "" or "%"
+                            perksStr = perksStr .. " • " .. k .. ": +" .. v .. suffix .."\n"
+                        end
+                    end
+                    if perksStr ~= "" then statusDesc = statusDesc .. "\n" .. perksStr end
+                end
+                
+                if EnchantStatusLabel then
+                    EnchantStatusLabel:SetTitle(statusTitle)
+                    EnchantStatusLabel:SetDesc(statusDesc)
+                    
+                    -- Update Icon Status jika ada di data enchant
+                    if currentLevelData.Icon and EnchantStatusLabel.SetImage then
+                         -- EnchantStatusLabel:SetImage(currentLevelData.Icon) -- Opsional
+                    end
+                end
+            else
+                if EnchantStatusLabel then
+                    EnchantStatusLabel:SetTitle("Error: Sword Not Found")
+                    EnchantStatusLabel:SetDesc("Please select a valid sword.")
+                end
+                selectedEnchantSID = nil
+            end
+        end
+        
+        task.wait(1) -- Loop setiap 1 detik
+    end
+end)
+
 -- SETTINGS TAB
 local SettingsTab = Window:Tab({Title = "Settings", Icon = "settings-2"})
 local ConfigSection = SettingsTab:Section({Title = "Config Manager", Icon = "save", Opened = true})
