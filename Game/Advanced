@@ -181,41 +181,19 @@ local function IsMapUnlocked(mapName)
     return false
 end
 
--- World Upgrades Vars
-local wu_SelectedMap = "Current Map"
-local WU_MapConfig = {} 
-local function GetWUConfig(mapName)
-    if not WU_MapConfig[mapName] then
-        WU_MapConfig[mapName] = {Power = false, Damage = false, Coins = false}
-    end
-    return WU_MapConfig[mapName]
-end
+-- ============================================================================
+--  GACHA SYSTEM (FIXED: SWORD PASSIVE 2-COLUMN GRID)
+-- ============================================================================
 
--- Stronger
-local targetStar = "None"
-local isRankUp = false
+-- [1. VARIABLES & DATA STORAGE]
+local GlobalGachaSources = {} 
+local powerList = {}        
+local PowerToggles = {}
+local selectedGachaSwordSID = nil
+local SwordPassiveTargets = {} 
+local TalentRankList = {'F', 'E', 'D', 'C', 'B', "A-", 'A'} 
+local FormattedTalentTargets = {}
 
--- Range Checker
-task.spawn(function()
-    while not Window.Destroyed do
-        attackRangePart = workspace:FindFirstChild("Cache") and workspace.Cache:FindFirstChild("Area")
-        if attackRangePart then attackRange = attackRangePart.Size.X/2 end
-        task.wait(1)
-    end
-end)
-
-local function getPosition(obj)
-    if obj:IsA("Model") then return obj:GetPivot().Position
-    elseif obj:IsA("BasePart") then return obj.Position end
-    return nil
-end
-
-local function getDistance(obj1, obj2)
-    local pos1 = getPosition(obj1)
-    local pos2 = getPosition(obj2)
-    if pos1 and pos2 then return (pos1 - pos2).Magnitude end
-    return 999999
-end
 
 -- ============================================================================
 --  DATA LOADER & HELPERS
@@ -291,6 +269,156 @@ local function LoadGameData()
     if s4 then GlobalSwordDB = r4 end
 end
 LoadGameData()
+-- Load Database Game
+local function LoadGachaSources()
+    local SourcesFolder = game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Gacha"):WaitForChild("Sources")
+    if SourcesFolder then
+        for _, module in pairs(SourcesFolder:GetChildren()) do
+            if module:IsA("ModuleScript") then
+                local s, r = pcall(function() return require(module) end)
+                if s and type(r) == "table" then
+                    GlobalGachaSources[module.Name] = r
+                end
+            end
+        end
+    end
+end
+LoadGachaSources()
+
+-- Helper: Ambil List Pedang (UPDATED: Added Gradient Support)
+local function GetGachaSwordList()
+    local list = {}
+    local pData = getgenv().PlayerData
+    if pData and pData.SwordsEquipped and pData.Swords then
+        for sid, _ in pairs(pData.SwordsEquipped) do
+            local swordData = pData.Swords[sid]
+            if swordData then
+                local name = swordData.Name
+                local currentPassive = swordData.Passive or "None"
+                local rarity = swordData.Rarity or "Common"
+                
+                local iconId = "rbxassetid://84366761557806"
+                if GlobalSwordDB and GlobalSwordDB[name] then iconId = GlobalSwordDB[name].Icon end
+
+                -- [BARU] Generate Gradient berdasarkan Rarity untuk Card UI
+                local gradientObj = nil
+                if GlobalGradientDB and GlobalGradientDB.GetRarityColor then
+                    local colors = GlobalGradientDB:GetRarityColor(rarity)
+                    if colors and colors.Base and colors.Wave then
+                         gradientObj = ColorSequence.new{
+                            ColorSequenceKeypoint.new(0, colors.Base),
+                            ColorSequenceKeypoint.new(1, colors.Wave)
+                        }
+                    end
+                end
+
+                table.insert(list, {
+                    Title = string.format("%s [%s]", name, currentPassive),
+                    Desc = "Rarity: " .. rarity,
+                    Value = sid, 
+                    Icon = iconId,
+                    Gradient = gradientObj -- Data Gradient ditambahkan ke list
+                })
+            end
+        end
+        table.sort(list, function(a,b) return a.Title < b.Title end)
+    end
+    return list
+end
+
+-- Helper: Ambil List Passive (Index)
+local function GetSwordPassiveIndexList()
+    local list = {}
+    local sourceDB = GlobalGachaSources["Sword Passives"] -- Plural 's'
+    
+    if sourceDB then
+        for name, data in pairs(sourceDB) do
+            local perksVal = data.Perks or 0
+            local statsDesc = string.format("Perks: x%s", tostring(perksVal))
+            
+            local gradientObj = nil
+            if GlobalGradientDB and GlobalGradientDB.GetRarityColor then
+                local colors = GlobalGradientDB:GetRarityColor(data.Rarity or "Common")
+                if colors and colors.Base and colors.Wave then
+                     gradientObj = ColorSequence.new{
+                        ColorSequenceKeypoint.new(0, colors.Base),
+                        ColorSequenceKeypoint.new(1, colors.Wave)
+                    }
+                end
+            end
+            
+            table.insert(list, {
+                Title = name, Desc = statsDesc, Value = name,
+                Icon = data.Icon, Gradient = gradientObj,
+                Index = data.Index or 999
+            })
+        end
+        table.sort(list, function(a,b) return a.Index < b.Index end)
+    end
+    return list
+end
+
+-- Loader Daftar Gacha
+local function LoadDynamicGachaList()
+    table.clear(powerList) 
+    local MachinesFolder = game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Gacha"):WaitForChild("Machines")
+    if MachinesFolder then
+        for _, module in pairs(MachinesFolder:GetChildren()) do
+            if module:IsA("ModuleScript") then
+                local success, data = pcall(function() return require(module) end)
+                if success and type(data) == "table" and data.Item then
+                    local writableData = {}
+                    for k, v in pairs(data) do writableData[k] = v end
+                    
+                    writableData.auto = false
+                    writableData.allow = true
+                    writableData.Map = data.Map or "Global"
+                    writableData.IsTalent = (data.Name == "Talents")
+                    
+                    table.insert(powerList, writableData)
+                end
+            end
+        end
+    end
+    table.sort(powerList, function(a, b) return a.Name < b.Name end)
+end
+task.spawn(LoadDynamicGachaList)
+
+-- World Upgrades Vars
+local wu_SelectedMap = "Current Map"
+local WU_MapConfig = {} 
+local function GetWUConfig(mapName)
+    if not WU_MapConfig[mapName] then
+        WU_MapConfig[mapName] = {Power = false, Damage = false, Coins = false}
+    end
+    return WU_MapConfig[mapName]
+end
+
+-- Stronger
+local targetStar = "None"
+local isRankUp = false
+
+-- Range Checker
+task.spawn(function()
+    while not Window.Destroyed do
+        attackRangePart = workspace:FindFirstChild("Cache") and workspace.Cache:FindFirstChild("Area")
+        if attackRangePart then attackRange = attackRangePart.Size.X/2 end
+        task.wait(1)
+    end
+end)
+
+local function getPosition(obj)
+    if obj:IsA("Model") then return obj:GetPivot().Position
+    elseif obj:IsA("BasePart") then return obj.Position end
+    return nil
+end
+
+local function getDistance(obj1, obj2)
+    local pos1 = getPosition(obj1)
+    local pos2 = getPosition(obj2)
+    if pos1 and pos2 then return (pos1 - pos2).Magnitude end
+    return 999999
+end
 
 -- ============================================================================
 --  DATA LOADER & HELPERS (UPDATED)
@@ -1597,136 +1725,6 @@ task.spawn(function()
     end
 end)
 
-
-
--- ============================================================================
---  GACHA SYSTEM (FIXED: SWORD PASSIVE 2-COLUMN GRID)
--- ============================================================================
-
--- [1. VARIABLES & DATA STORAGE]
-local GlobalGachaSources = {} 
-local powerList = {}        
-local PowerToggles = {}
-local selectedGachaSwordSID = nil
-local SwordPassiveTargets = {} 
-local TalentRankList = {'F', 'E', 'D', 'C', 'B', "A-", 'A'} 
-local FormattedTalentTargets = {}
-
--- Load Database Game
-local function LoadGachaSources()
-    local SourcesFolder = game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Gacha"):WaitForChild("Sources")
-    if SourcesFolder then
-        for _, module in pairs(SourcesFolder:GetChildren()) do
-            if module:IsA("ModuleScript") then
-                local s, r = pcall(function() return require(module) end)
-                if s and type(r) == "table" then
-                    GlobalGachaSources[module.Name] = r
-                end
-            end
-        end
-    end
-end
-LoadGachaSources()
-
--- Helper: Ambil List Pedang (UPDATED: Added Gradient Support)
-local function GetGachaSwordList()
-    local list = {}
-    local pData = getgenv().PlayerData
-    if pData and pData.SwordsEquipped and pData.Swords then
-        for sid, _ in pairs(pData.SwordsEquipped) do
-            local swordData = pData.Swords[sid]
-            if swordData then
-                local name = swordData.Name
-                local currentPassive = swordData.Passive or "None"
-                local rarity = swordData.Rarity or "Common"
-                
-                local iconId = "rbxassetid://84366761557806"
-                if GlobalSwordDB and GlobalSwordDB[name] then iconId = GlobalSwordDB[name].Icon end
-
-                -- [BARU] Generate Gradient berdasarkan Rarity untuk Card UI
-                local gradientObj = nil
-                if GlobalGradientDB and GlobalGradientDB.GetRarityColor then
-                    local colors = GlobalGradientDB:GetRarityColor(rarity)
-                    if colors and colors.Base and colors.Wave then
-                         gradientObj = ColorSequence.new{
-                            ColorSequenceKeypoint.new(0, colors.Base),
-                            ColorSequenceKeypoint.new(1, colors.Wave)
-                        }
-                    end
-                end
-
-                table.insert(list, {
-                    Title = string.format("%s [%s]", name, currentPassive),
-                    Desc = "Rarity: " .. rarity,
-                    Value = sid, 
-                    Icon = iconId,
-                    Gradient = gradientObj -- Data Gradient ditambahkan ke list
-                })
-            end
-        end
-        table.sort(list, function(a,b) return a.Title < b.Title end)
-    end
-    return list
-end
-
--- Helper: Ambil List Passive (Index)
-local function GetSwordPassiveIndexList()
-    local list = {}
-    local sourceDB = GlobalGachaSources["Sword Passives"] -- Plural 's'
-    
-    if sourceDB then
-        for name, data in pairs(sourceDB) do
-            local perksVal = data.Perks or 0
-            local statsDesc = string.format("Perks: x%s", tostring(perksVal))
-            
-            local gradientObj = nil
-            if GlobalGradientDB and GlobalGradientDB.GetRarityColor then
-                local colors = GlobalGradientDB:GetRarityColor(data.Rarity or "Common")
-                if colors and colors.Base and colors.Wave then
-                     gradientObj = ColorSequence.new{
-                        ColorSequenceKeypoint.new(0, colors.Base),
-                        ColorSequenceKeypoint.new(1, colors.Wave)
-                    }
-                end
-            end
-            
-            table.insert(list, {
-                Title = name, Desc = statsDesc, Value = name,
-                Icon = data.Icon, Gradient = gradientObj,
-                Index = data.Index or 999
-            })
-        end
-        table.sort(list, function(a,b) return a.Index < b.Index end)
-    end
-    return list
-end
-
--- Loader Daftar Gacha
-local function LoadDynamicGachaList()
-    table.clear(powerList) 
-    local MachinesFolder = game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Gacha"):WaitForChild("Machines")
-    if MachinesFolder then
-        for _, module in pairs(MachinesFolder:GetChildren()) do
-            if module:IsA("ModuleScript") then
-                local success, data = pcall(function() return require(module) end)
-                if success and type(data) == "table" and data.Item then
-                    local writableData = {}
-                    for k, v in pairs(data) do writableData[k] = v end
-                    
-                    writableData.auto = false
-                    writableData.allow = true
-                    writableData.Map = data.Map or "Global"
-                    writableData.IsTalent = (data.Name == "Talents")
-                    
-                    table.insert(powerList, writableData)
-                end
-            end
-        end
-    end
-    table.sort(powerList, function(a, b) return a.Name < b.Name end)
-end
-task.spawn(LoadDynamicGachaList)
-
 -- [2. UI GENERATOR - 2 PER ITEM LAYOUT]
 local currentGachaGroup
 
@@ -2022,6 +2020,7 @@ task.spawn(function()
         task.wait(0.5) -- Delay loop agar tidak spam/crash
     end
 end)
+
 -- STRONGER
 -- [REMOVED EXPEDITION OLD UI]
 FM_Add("Stronger", MainTab:Dropdown({Title="Auto Hatch (Star)", Values=MapList, Value="None", Flag="HatchTarget_Cfg", Callback=function(v) targetStar = (type(v)=="table" and v.Title) or v end}))
