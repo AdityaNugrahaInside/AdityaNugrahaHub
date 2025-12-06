@@ -2906,3 +2906,46 @@ task.spawn(function()
         pcall(function() local cfg = Window.ConfigManager:GetConfig(ConfigName) if cfg then cfg:Save() end end)
     end
 end)
+
+-- ============================================================================
+--  PASTE KODE SMART AUTO EXECUTE DI SINI (PALING BAWAH)
+-- ============================================================================
+local Players = game:GetService("Players")
+
+local function QueueScript()
+    -- Deteksi fungsi queue bawaan executor
+    local queue_on_teleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport) or (request and request.queue_on_teleport)
+    
+    if queue_on_teleport then
+        -- 1. Ambil ID Universe Game saat ini (Game A)
+        local CurrentUniverseID = game.GameId
+        
+        -- 2. Susun Script
+        local Payload = string.format([[
+            repeat task.wait() until game:IsLoaded()
+            
+            -- [SAFETY CHECK]
+            if game.GameId == %d then
+                pcall(function()
+                    -- JANGAN LUPA GANTI URL INI DENGAN RAW GITHUB KAMU YANG ASLI
+                    loadstring(game:HttpGet("https://raw.githubusercontent.com/AdityaNugrahaInside/ANHub/refs/heads/main/Game/Advanced"))()
+                end)
+            else
+                warn("ANHub: Script stopped because you switched to a different game.")
+            end
+        ]], CurrentUniverseID)
+        
+        -- 3. Masukkan ke antrean
+        queue_on_teleport(Payload)
+    end
+end
+
+-- Event Listener
+Players.LocalPlayer.OnTeleport:Connect(function(State)
+    if State == Enum.TeleportState.Started or State == Enum.TeleportState.InProgress then
+        QueueScript()
+    end
+end)
+
+-- Panggil sekali di awal (Opsional tapi direkomendasikan)
+QueueScript()
