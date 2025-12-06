@@ -2666,7 +2666,7 @@ end
 -- 2. UI Elements
 FM_Add("Expedition", MainTab:Toggle({
     Title = "Auto Expedition (Smart)",
-    Desc = "Auto Start, Wait & Claim Rewards + Webhook",
+    Desc = "Auto Start, Wait & Claim Rewards",
     Flag = "AutoExp_Smart_Cfg",
     Callback = function(v) isAutoExpeditionSmart = v end
 }))
