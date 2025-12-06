@@ -2278,13 +2278,24 @@ task.spawn(function()
 end)
 
 -- ============================================================================
---  STRONGER FEATURE (SMART HATCH - FULL SAFE MODE)
+--  STRONGER FEATURE (SMART HATCH + AUTO TELEPORT)
 -- ============================================================================
+
+-- 1. Generate Daftar Star yang Benar (Dari Folder Stars, bukan Boss)
+local StarList = {}
+local StarsFolder = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Stars")
+
+for _, module in pairs(StarsFolder:GetChildren()) do
+    if module:IsA("ModuleScript") then
+        table.insert(StarList, module.Name)
+    end
+end
+table.sort(StarList) -- Urutkan abjad
 
 -- UI Elements
 FM_Add("Stronger", MainTab:Dropdown({
     Title = "Auto Hatch (Star)", 
-    Values = MapList, 
+    Values = StarList, -- Menggunakan list yang benar
     Value = "None", 
     Flag = "HatchTarget_Cfg", 
     Callback = function(v) 
@@ -2292,11 +2303,10 @@ FM_Add("Stronger", MainTab:Dropdown({
     end
 }))
 
--- Helper: Cari Model Star di Workspace menggunakan Tag
+-- Helper: Cari Model Star di Workspace
 local function GetStarModel(starName)
     local CollectionService = game:GetService("CollectionService")
     local stars = CollectionService:GetTagged("StarModel")
-    
     for _, model in pairs(stars) do
         if model.Name == starName or model:GetAttribute("ID") == starName then
             return model
@@ -2308,22 +2318,38 @@ end
 -- Loop Logic Auto Hatch
 task.spawn(function()
     while not Window.Destroyed do
-        -- Ambil Data Map
-        local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
+        -- Ambil Data Player
+        local pData = getgenv().PlayerData
+        local currentMap = pData and pData.Map
         local isGamemode = (currentMap == "TrialEasy") or (currentMap == "Raid")
 
-        -- [KONDISI STOP/PAUSE SINKRON DENGAN FARM]
-        -- Script akan PAUSE jika:
-        -- 1. Tidak ada target Star yg dipilih
-        -- 2. Sedang di Gamemode (Raid/Trial)
-        -- 3. Sedang melawan Global Boss
-        -- 4. Sedang proses Teleport (Transitioning)
+        -- [KONDISI STOP/PAUSE]
         if (targetStar == "None" or not targetStar) or isGamemode or isGlobalBossActive or isTransitioning then
             task.wait(1) 
-            continue -- Skip ke loop berikutnya
+            continue 
         end
 
-        -- Jalankan Hatch hanya jika kondisi di atas aman
+        -- [LOGIKA BARU: CEK MAP TARGET]
+        local StarModule = StarsFolder:FindFirstChild(targetStar)
+        if StarModule then
+            -- Baca data telur untuk tahu dia ada di map mana
+            local success, StarData = pcall(require, StarModule)
+            if success and StarData and StarData.Map then
+                local requiredMap = StarData.Map
+                
+                -- Jika kita BUKAN di map yang seharusnya -> TELEPORT
+                if currentMap ~= requiredMap then
+                    Notify("Hatch", "Teleporting to " .. requiredMap .. "...", "map")
+                    SmartTeleport(requiredMap)
+                    
+                    -- Tunggu proses teleport dimulai
+                    task.wait(2) 
+                    continue -- Skip sisa kode di bawah, ulang loop dari awal
+                end
+            end
+        end
+
+        -- [LOGIKA HATCHING (Jika Map Sudah Benar)]
         local starModel = GetStarModel(targetStar)
         
         if starModel then
@@ -2342,14 +2368,14 @@ task.spawn(function()
                 else
                     -- Masih jauh -> Teleport mendekat
                     hrp.CFrame = CFrame.new(starPos + Vector3.new(0, 5, 0))
-                    
-                    -- Tunggu sebentar agar posisi server sinkron
                     task.wait(0.5) 
                 end
             end
+        else
+            -- Map sudah benar tapi telur belum loading (kadang terjadi saat baru join)
+            -- Kita tunggu sebentar
         end
         
-        -- Jeda loop standar
         task.wait(0.5) 
     end
 end)
