@@ -2278,7 +2278,7 @@ task.spawn(function()
 end)
 
 -- ============================================================================
---  STRONGER FEATURE (SMART HATCH + AUTO TELEPORT)
+--  STRONGER FEATURE (SMART HATCH + AUTO TELEPORT + NONE OPTION)
 -- ============================================================================
 
 -- 1. Generate Daftar Star yang Benar (Dari Folder Stars, bukan Boss)
@@ -2292,10 +2292,13 @@ for _, module in pairs(StarsFolder:GetChildren()) do
 end
 table.sort(StarList) -- Urutkan abjad
 
+-- [TAMBAHAN] Masukkan opsi "None" di urutan pertama
+table.insert(StarList, 1, "None")
+
 -- UI Elements
 FM_Add("Stronger", MainTab:Dropdown({
     Title = "Auto Hatch (Star)", 
-    Values = StarList, -- Menggunakan list yang benar
+    Values = StarList, -- Menggunakan list yang sudah ada "None"
     Value = "None", 
     Flag = "HatchTarget_Cfg", 
     Callback = function(v) 
@@ -2324,6 +2327,7 @@ task.spawn(function()
         local isGamemode = (currentMap == "TrialEasy") or (currentMap == "Raid")
 
         -- [KONDISI STOP/PAUSE]
+        -- Jika target adalah "None" (Manual Stop), loop akan skip terus menerus
         if (targetStar == "None" or not targetStar) or isGamemode or isGlobalBossActive or isTransitioning then
             task.wait(1) 
             continue 
@@ -2372,8 +2376,7 @@ task.spawn(function()
                 end
             end
         else
-            -- Map sudah benar tapi telur belum loading (kadang terjadi saat baru join)
-            -- Kita tunggu sebentar
+            -- Map sudah benar tapi telur belum loading
         end
         
         task.wait(0.5) 
