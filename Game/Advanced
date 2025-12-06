@@ -237,9 +237,7 @@ local function GetWUConfig(mapName)
 end
 
 -- Stronger
-local isAutoClaimExpedition = false
 local targetStar = "None"
-local expeditionTarget = "None"
 local isRankUp = false
 
 -- Range Checker
@@ -275,7 +273,26 @@ local GlobalRankDB = {}
 local GlobalMapDB = {} 
 local GlobalWorldUpgradeDB = {} 
 local GlobalUpgradeSystemsDB = {} -- [TAMBAHAN BARU]
+local GlobalGradientDB = {} -- [TAMBAHAN BARU]
+-- [TAMBAHAN] Global Variable untuk menyimpan Data Source Gacha
+local GlobalGachaSources = {}
+local GlobalHeroesExpeditionDB = {}
 
+-- Masukkan ini ke dalam fungsi LoadGameData() yang sudah ada, atau taruh di bawahnya
+local function LoadGachaSources()
+    local SourcesFolder = ReplicatedStorage.Shared.Gacha.Sources
+    if SourcesFolder then
+        for _, module in pairs(SourcesFolder:GetChildren()) do
+            if module:IsA("ModuleScript") then
+                local s, r = pcall(function() return require(module) end)
+                if s and type(r) == "table" then
+                    GlobalGachaSources[module.Name] = r
+                end
+            end
+        end
+    end
+end
+LoadGachaSources()
 local function LoadGameData()
     local successBoss, resultBoss = pcall(function() return require(ReplicatedStorage.Shared.Enemies["Global Bosses"]) end)
     if successBoss and type(resultBoss) == "table" then
@@ -283,6 +300,14 @@ local function LoadGameData()
             if data.Map then GlobalBossDB[bossName] = data end 
         end
     end
+
+    local successExp, resultExp = pcall(function() return require(ReplicatedStorage.Shared.HeroesExpedition) end)
+    if successExp and type(resultExp) == "table" then 
+        GlobalHeroesExpeditionDB = resultExp
+    end
+
+    local successGradient, resultGradient = pcall(function() return require(ReplicatedStorage.Libs.Utils.Scripts.Colors) end)
+    if successGradient and type(resultGradient) == "table" then GlobalGradientDB = resultGradient end
 
     local successRanks, resultRanks = pcall(function() return require(ReplicatedStorage.Shared.Ranks) end)
     if successRanks and type(resultRanks) == "table" then GlobalRankDB = resultRanks end
@@ -391,18 +416,67 @@ local function resetEnemiesList()
                     for _, drop in ipairs(processedDrops) do
                         if drop.Item then
                             local iconFound = nil
+                            local ResultItem = nil
                             if drop.Type == "Avatar" then
                                 local avatarData = GlobalAvatarDB[drop.Item]
+                                ResultItem = avatarData
                                 if avatarData then iconFound = avatarData.Icon end
                             elseif drop.Type == "Sword" then
                                 local swordData = GlobalSwordDB[drop.Item]
+                                ResultItem = swordData
                                 if swordData then iconFound = swordData.Icon end
                             else
                                 local itemData = GlobalItemDB[drop.Item]
+                                ResultItem = itemData
                                 if itemData then iconFound = itemData.Icon end
                             end
-                            if iconFound then table.insert(dropIcons, iconFound) end
+                            if iconFound and ResultItem then
+                                local Colors
+                                local DropCount
+                                -- [FIX] GlobalGradientDB.GetRarityColor requires 2 arguments (self, rarity) to access upvalues correctly
+                                if GlobalGradientDB and GlobalGradientDB.GetRarityColor then
+                                     Colors = GlobalGradientDB:GetRarityColor(ResultItem.Rarity)
+                                end
+                                
+                                if Colors and type(Colors) == "table" and Colors.Base and Colors.Wave then
+                                    if drop.Minimum == drop.Maximum then
+                                        DropCount = drop.Minimum .. "x"
+                                    else
+                                        DropCount = drop.Minimum .. "x-" .. FormatNumber(drop.Maximum) .. "x"
+                                    end
+                                    table.insert(dropIcons, {
+                                        Card = true,
+                                        Rate = drop.Chance .. "%",
+                                        Title = drop.Item,
+                                        Quantity = DropCount,
+                                        Image = iconFound,
+                                        Gradient = ColorSequence.new{
+                                            ColorSequenceKeypoint.new(0, Colors.Base),
+                                            ColorSequenceKeypoint.new(1, Colors.Wave)
+                                        }
+                                    })
+                                end
+                            end
                         end
+                    end
+                    -- [TAMBAHAN BARU] Hitung Gradient Berdasarkan Difficulty
+                    local rarityMap = {
+                        [1] = "Common", [2] = "Uncommon", [3] = "Rare", 
+                        [4] = "Epic", [5] = "Legendary", [6] = "Mythical", [7] = "Scarlet"
+                    }
+                    -- Mapping Rank (1-7) ke nama Rarity game
+                    local rarityStr = rarityMap[rank] or "Common"
+                    local enemyGradient = nil
+
+                    if GlobalGradientDB and GlobalGradientDB.GetRarityColor then
+                         -- Mengambil warna dari database game
+                         local eColors = GlobalGradientDB:GetRarityColor(rarityStr)
+                         if eColors and eColors.Base and eColors.Wave then
+                             enemyGradient = ColorSequence.new{
+                                ColorSequenceKeypoint.new(0, eColors.Base),
+                                ColorSequenceKeypoint.new(1, eColors.Wave)
+                            }
+                         end
                     end
 
                     local descStr = "HP: " .. tostring(hp)
@@ -412,7 +486,8 @@ local function resetEnemiesList()
                         Value = enemyName, 
                         Rank = rank,
                         Icon = iconAsset,
-                        Images = dropIcons 
+                        Images = dropIcons,
+                        Gradient = enemyGradient -- <--- Tambahkan ini!
                     })
                 end
             end
@@ -442,20 +517,43 @@ local function resetEnemiesList()
                     end
                 end
                 
-                -- 2. Inject Value langsung ke Library (Bypass fungsi Select yang berat)
+                -- 2. Inject Value langsung ke Library
                 if foundItem then
                     UI.EnemyDD.Value = foundItem 
                     
                     table.clear(targetList)
                     table.insert(targetList, foundItem.Value)
                     Notify("System", "Auto-Selected: " .. foundItem.Value, "check")
+
+                    -- [BARU] Set Image saat Auto Select
+                    -- [MULAI BAGIAN YANG DIUBAH/DITAMBAHKAN]
+                    if foundItem.Icon then
+                        -- Set Icon untuk Text Value (Kanan)
+                        UI.EnemyDD:SetValueImage(foundItem.Icon)
+                        UI.EnemyDD:SetDesc(foundItem.Value)
+
+                        -- Set Icon untuk Main Button (Kiri) - Mengikuti gaya Card/Gradient jika ada
+                        -- if foundItem.Gradient then
+                        --      UI.EnemyDD:SetMainImage({
+                        --          Image = foundItem.Icon,      -- ID Gambar
+                        --          Quantity = "",              -- Kosongkan text quantity agar bersih
+                        --          Gradient = foundItem.Gradient -- Gradient Object
+                        --      }, 40)
+                        -- else
+                        --      -- Fallback ke icon biasa jika tidak ada gradient
+                        --      UI.EnemyDD:SetMainImage(foundItem.Icon)
+                        -- end
+                    end
+                    -- [SELESAI BAGIAN YANG DIUBAH/DITAMBAHKAN]
                 else
                     UI.EnemyDD.Value = nil -- Reset jika tidak ada save
                     table.clear(targetList)
+                    -- [BARU] Reset Image ke Default
+                    UI.EnemyDD:SetValueImage("rbxassetid://84366761557806")
+                    UI.EnemyDD:SetMainImage("rbxassetid://84366761557806")
                 end
 
                 -- 3. Refresh UI SEKALI SAJA
-                -- Library akan otomatis membaca .Value yang baru kita set dan mewarnai tombolnya
                 pcall(function() 
                     UI.EnemyDD:Refresh(nameList) 
                 end)
@@ -761,7 +859,7 @@ local function joinDungeon()
         ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"Gamemodes", isTargetTrial, "Join", n = 3}, "\2"})
         task.wait(0.2)
     end
-    task.wait(8)
+    task.wait(5)
     checkTrial()
 end
 
@@ -809,12 +907,12 @@ local function checkRaid()
     end
 end
 
--- [UBAH BAGIAN FUNGSI JOINRAID]
+-- [PERBAIKAN: LOGIKA JOIN RAID MENIRU TRIAL 1:1]
 local function joinRaid()
     local isTargetRaid = false
     local currentTime = os.date("*t")
     
-    -- Logika Waktu Persis seperti Trial (Cek menit 00 dan 30)
+    -- 1. Cek Waktu (Persis Logic Trial: Menit 00 dan 30)
     for i, raid in pairs(raidJoinList) do
         if raid.time == currentTime.min or (raid.time + 30) == currentTime.min then 
             isTargetRaid = raid.name 
@@ -822,33 +920,52 @@ local function joinRaid()
         end
     end
 
-    -- Jika bukan waktunya, stop di sini (jangan join)
+    -- 2. Cek Raid Key (Tambahan: Jika punya Key, paksa GAS masuk walau bukan jamnya)
+    -- Ini ditaruh setelah cek waktu agar Key menjadi prioritas backup
+    if not isTargetRaid then
+        if getgenv().PlayerData and getgenv().PlayerData.Items then
+             local keys = getgenv().PlayerData.Items["Raid Key"] or 0
+             if keys > 0 then
+                 isTargetRaid = "Raid" -- Paksa set target
+             end
+        end
+    end
+
+    -- Jika tidak ada target (Bukan jamnya & Gak punya key), STOP DISINI.
+    -- Ini yang mencegah script stuck/spamming error.
     if not isTargetRaid then return end
 
+    -- 3. Logic Simpan Map (Persis Logic Trial)
     local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
     if currentMap and currentMap ~= "Raid" and currentMap ~= "None" then savedPreviousMap = currentMap
-    elseif not savedPreviousMap then savedPreviousMap = currentMap end
+    elseif not savedPreviousMap then savedPreviousMap = "Trial Lobby" end -- Fallback map aman
 
-    Notify("Raid", "Time Matched! Auto Joining Raid...", "hourglass")
+    Notify("Raid", "Auto Joining Raid...", "hourglass")
     task.wait(1)
+    
+    -- 4. Eksekusi Join (Persis Logic Trial)
     for i=1, 5 do
-        -- [RAID JOIN REMOTE]
+        if not isRaid then break end -- Safety check jika toggle dimatikan
         ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"Gamemodes", "Raid", "Join", n = 3}, "\2"})
         task.wait(0.2)
     end
-    task.wait(8)
-    checkRaid()
+    
+    task.wait(5)
+    checkRaid() -- Langsung masuk fungsi pengecekan
 end
 
 local function autoFarmRaid()
     while isRaid and not Window.Destroyed do 
         local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
+        
+        -- Logic Loop Persis autoFarmDungeon
         if currentMap == "Raid" then 
             checkRaid()
         elseif not isGlobalBossActive then 
             joinRaid() 
         end
-        task.wait(5)    
+        
+        task.wait(5) -- Delay loop standar
     end
 end
 
@@ -860,15 +977,61 @@ end
 -- [UPDATED GACHA LOGIC WITH DYNAMIC CHECK & BALANCE PROTECTION]
 local function changePower(name, value) for _, power in pairs(powerList) do if power.Name == name then power.auto = value return end end end
 
--- [GACHA LOGIC LOOP - UPDATED FOR TALENTS]
+-- [GACHA LOGIC LOOP - UPDATED WITH CHECKS]
+local lastGachaVisuals = {} 
+
 task.spawn(function()
     while not Window.Destroyed do
         for _, power in pairs(powerList) do
-            local balance = 0
             local pData = getgenv().PlayerData
+            
+            -- 1. UPDATE VISUAL TOGGLE
+            if pData and pData.Gacha and pData.Gacha[power.Name] then
+                local currentItemName = pData.Gacha[power.Name].Current
+                
+                -- Cek apakah item berbeda dari cache visual terakhir
+                if currentItemName then
+                    local sourceName = power.Source 
+                    local sourceDB = GlobalGachaSources[sourceName]
+                    
+                    if sourceDB and sourceDB[currentItemName] then
+                        local itemData = sourceDB[currentItemName]
+                        
+                        -- Siapkan Gradient
+                        local rarityColor = {Base = Color3.new(0.5, 0.5, 0.5), Wave = Color3.new(0.3, 0.3, 0.3)}
+                        if GlobalGradientDB and GlobalGradientDB.GetRarityColor then
+                            local rData = GlobalGradientDB:GetRarityColor(itemData.Rarity)
+                            if rData then rarityColor = rData end
+                        end
+                        
+                        local gradientObj = ColorSequence.new({
+                            ColorSequenceKeypoint.new(0, rarityColor.Base),
+                            ColorSequenceKeypoint.new(1, rarityColor.Wave)
+                        })
+                        
+                        -- [PENGECEKAN TAMBAHAN]
+                        -- Pastikan Title (currentItemName) valid dan Gradient sudah terbentuk
+                        if currentItemName and gradientObj then
+                            
+                            if PowerToggles[power.Name] then
+                                PowerToggles[power.Name]:SetMainImage({
+                                    Title = currentItemName,           -- Nama Item di Bawah
+                                    Image = itemData.Icon,
+                                    Gradient = gradientObj
+                                }, 50)
+                                
+                                -- HANYA update cache jika SetMainImage berhasil dilakukan (syarat terpenuhi)
+                                lastGachaVisuals[power.Name] = currentItemName
+                            end
+                        end
+                    end
+                end
+            end
+
+            -- 2. LOGIKA AUTO ROLL
+            local balance = 0
             if pData and pData.Items then balance = pData.Items[power.Item] or 0 end
             
-            -- [DYNAMIC PRICE CALCULATION FOR TALENTS]
             local currentPrice = power.Price or 0
             if power.IsTalent and pData and pData.Gacha and pData.Gacha.Talents then
                 local lockedData = pData.Gacha.Talents.Locked or {}
@@ -880,12 +1043,12 @@ task.spawn(function()
             end
 
             if power.auto == true then 
-                -- 0. CEK MAP & TELEPORT
+                -- Cek Map Unlock
                 if not IsMapUnlocked(power.Map) and not power.allow then
                     if PowerToggles[power.Name] then PowerToggles[power.Name]:Unlock() end
                 end
 
-                -- 1. CEK SALDO 
+                -- Cek Saldo
                 local canAfford = true
                 if power.Item and currentPrice > 0 then
                     if balance < currentPrice then
@@ -896,63 +1059,54 @@ task.spawn(function()
                     end
                 end
 
-                -- 2. ROLL (DENGAN LOGIKA TALENT)
+                -- Eksekusi Roll
                 if canAfford then
                     local args = {}
                     
                     if power.IsTalent then
-                        -- [AUTO STOP IF ALL LOCKED]
-                        local pData = getgenv().PlayerData
-                        if pData and pData.Gacha and pData.Gacha.Talents then
-                            local tData = pData.Gacha.Talents
-                            local currents = tData.Currents or {}
-                            local locked = tData.Locked or {}
-                            local allLocked = true
-                            local hasStats = false
-                            
-                            for statName, _ in pairs(currents) do
-                                hasStats = true
-                                if not locked[statName] then
-                                    allLocked = false
-                                    break
-                                end
-                            end
-                            
-                            if hasStats and allLocked then
-                                power.auto = false
-                                if PowerToggles[power.Name] then PowerToggles[power.Name]:Set(false) end
-                                Notify("System", "All Talents Locked! Auto Stopped.", "check")
-                                canAfford = false
+                        local tData = pData.Gacha.Talents
+                        local currents = tData.Currents or {}
+                        local locked = tData.Locked or {}
+                        local allLocked = true
+                        local hasStats = false
+                        
+                        for statName, _ in pairs(currents) do
+                            hasStats = true
+                            if not locked[statName] then
+                                allLocked = false
+                                break
                             end
                         end
-
-                        -- Logika Khusus Talent: Kirim Dictionary Targets
-                        -- Sesuai decompile: Signal:Fire(..., module_upvr_2.Cache.TalentsAutoTargets)
-                        args = {{"General", "Gacha", "Roll", power.Name, FormattedTalentTargets, n = 5}, "\2"}
+                        
+                        if hasStats and allLocked then
+                            power.auto = false
+                            if PowerToggles[power.Name] then PowerToggles[power.Name]:Set(false) end
+                            Notify("System", "All Talents Locked! Auto Stopped.", "check")
+                        else
+                            args = {{"General", "Gacha", "Roll", power.Name, FormattedTalentTargets, n = 5}, "\2"}
+                            ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer(args) 
+                        end
                     else
-                        -- Gacha Biasa: Kirim Table Kosong
                         args = {{"General", "Gacha", "Roll", power.Name, {}, n = 5}, "\2"}
+                        ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer(args) 
                     end
-                    
-                    ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer(args) 
                 end
             end
             
-            -- Update UI Description
+            -- Update Deskripsi Harga
             if PowerToggles[power.Name] and IsMapUnlocked(power.Map) then
                 if power.IsTalent then
-                     -- Tampilkan info target di tombol Talent
-                     local count = 0
-                     for _ in pairs(FormattedTalentTargets) do count = count + 1 end
-                     PowerToggles[power.Name]:SetDesc("Price: "..currentPrice.." | Targets: "..count)
+                      local count = 0
+                      for _ in pairs(FormattedTalentTargets) do count = count + 1 end
+                      PowerToggles[power.Name]:SetDesc("Price: "..currentPrice.." | Targets: "..count)
                 else
-                     PowerToggles[power.Name]:SetDesc("Cost:"..currentPrice.."\n"..power.Item..":"..balance)
+                      PowerToggles[power.Name]:SetDesc("Cost: "..currentPrice.."\n"..power.Item..": "..FormatNumber(balance))
                 end
             elseif PowerToggles[power.Name] then
                 PowerToggles[power.Name]:SetDesc("LOCKED: Need Unlock Map " .. power.Map)
             end
         end
-        task.wait(0.5) -- Speed roll
+        task.wait(0.5)
     end
 end)
 
@@ -973,8 +1127,6 @@ task.spawn(function()
                 end
             end
         end
-        if isAutoClaimExpedition == true then ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "HeroesExpedition", "Claim", n = 3}, "\2"}) end
-        if expeditionTarget and expeditionTarget ~= "None" then ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "HeroesExpedition", "Start", expeditionTarget, n = 4}, "\2"}) end
         task.wait(0.5) 
     end
 end)
@@ -1070,10 +1222,11 @@ local FM_Category = MainTab:Category({
         {Title="Gamemodes", Icon="hourglass"}, 
         {Title="Bosses", Icon="skull"}, 
         {Title="Gacha", Icon="dices"},
-        {Title="Avatars", Icon="user"}, -- [BARU] Ditambahkan disini
+        {Title="Avatars", Icon="user"},
         {Title="World Upgrade", Icon="globe"}, 
-        {Title="Trial Upgrades", Icon="zap"}, -- [BARU]
+        {Title="Trial Upgrades", Icon="zap"},
         {Title="Upgrade Rank", Icon="chevrons-up"}, 
+        {Title="Expedition", Icon="compass"}, -- <--- TAMBAHAN BARU DISINI
         {Title="Stronger", Icon="star"}
     },
     Callback = FM_OnChange
@@ -1091,19 +1244,51 @@ if FM_Category.ElementFrame then
 end
 MainTab:Space({Columns=1})
 
--- FARM
 UI.EnemyDD = MainTab:Dropdown({
-    Title = "Select Enemies", Values = nameList, Multi = false, AllowNone = true, Value = nil, Flag = "TargetEnemies_Cfg",
+    Title = "Select Enemies", 
+    Values = nameList, 
+    Multi = false, 
+    AllowNone = true, 
+    Value = nil, 
+    Flag = "TargetEnemies_Cfg",
+    Image = "rbxassetid://84366761557806", 
+    ImageSize = 50, 
     Callback = function(v) 
         table.clear(targetList); 
         if v then 
+             -- Ambil value string dari object (karena dropdown values berisi table)
              local val = (type(v) == "table" and (v.Value or v.Title)) or v
              table.insert(targetList, val)
+             
+             -- [UPDATE] Logic SetMainImage dengan Card Style
+             if type(v) == "table" and v.Icon then
+                 -- 1. Icon Value (Kanan) tetap icon biasa
+                 UI.EnemyDD:SetValueImage(v.Icon)
+                 
+                 -- 2. Icon Main (Kiri) berubah jadi Card jika Gradient tersedia
+                 if v.Gradient then
+                     UI.EnemyDD:SetMainImage({
+                        Image = v.Icon, -- ID Gambar Baru
+                        Quantity = "", -- Update jumlah acak
+                        Gradient = v.Gradient
+                    }, 50)
+                     UI.EnemyDD:SetDesc(v.Value)
+                 -- else
+                 --     -- Fallback ke icon biasa jika tidak ada gradient
+                 --     UI.EnemyDD:SetMainImage(v.Icon)
+                 end
+             end
+
+             -- Simpan Config (Maps Selection)
              if not isUpdatingUI and not isTransitioning then
                  local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
                  if currentMap then SaveMapSelection(currentMap, val) end
              end
         else
+             -- Reset ke Default Image jika tidak ada yang dipilih
+             UI.EnemyDD:SetValueImage("rbxassetid://84366761557806")
+             UI.EnemyDD:SetMainImage("rbxassetid://84366761557806")
+             
              if not isUpdatingUI and not isTransitioning then
                  local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
                  if currentMap then SaveMapSelection(currentMap, nil) end
@@ -1142,24 +1327,88 @@ local function ParseHealth(str)
 end
 
 local BossListData = {}
+
+-- Loop Boss Database
 for name, data in pairs(GlobalBossDB) do
     local bossDropIcons = {}
-    if data.Drops then
-        for _, drop in ipairs(data.Drops) do
-            if drop.Item then
-                local iconFound = nil
-                if drop.Type == "Sword" then local swordData = GlobalSwordDB[drop.Item] if swordData then iconFound = swordData.Icon end
-                else local itemData = GlobalItemDB[drop.Item] if itemData then iconFound = itemData.Icon end end
-                if iconFound then table.insert(bossDropIcons, iconFound) end
-            end
-        end
-    end
     
-    -- Ambil Map Index untuk Sorting (Ambil dari GlobalMapDB yang sudah diload sebelumnya)
+    -- Proses Drops agar tampil sebagai CARD (Ada Gradient, Rate, dll)
+    
+    -- Ambil Map Index untuk Sorting (Agar rapi per Map)
     local mapIndex = 999
     local mapName = data.Map or "Unknown"
     if GlobalMapDB and GlobalMapDB[mapName] then
         mapIndex = GlobalMapDB[mapName].Index or 999
+    end
+    local rarityMap = {
+        [1] = "Common", [2] = "Uncommon", [3] = "Rare", 
+        [4] = "Epic", [5] = "Legendary", [6] = "Mythical", [7] = "Scarlet"
+    }
+    if data.Drops then
+        for _, drop in ipairs(data.Drops) do
+            if drop.Item then
+                local iconFound = nil
+                local ResultItem = nil
+
+                -- 1. Deteksi Tipe Item & Ambil Data Global
+                if drop.Type == "Avatar" then
+                    local avatarData = GlobalAvatarDB[drop.Item]
+                    ResultItem = avatarData
+                    if avatarData then iconFound = avatarData.Icon end
+                elseif drop.Type == "Sword" then
+                    local swordData = GlobalSwordDB[drop.Item]
+                    ResultItem = swordData
+                    if swordData then iconFound = swordData.Icon end
+                else
+                    local itemData = GlobalItemDB[drop.Item]
+                    ResultItem = itemData
+                    if itemData then iconFound = itemData.Icon end
+                end
+
+                -- 2. Buat Struktur Card jika Item & Icon ditemukan
+                if iconFound and ResultItem then
+                    local Colors
+                    local DropCount
+
+                    -- Ambil Warna Rarity dari Game
+                    if GlobalGradientDB and GlobalGradientDB.GetRarityColor then
+                         Colors = GlobalGradientDB:GetRarityColor(ResultItem.Rarity or rarityMap[mapIndex])
+                    end
+
+                    -- Format Jumlah Drop (contoh: 1x atau 1x-5x)
+                    if drop.Minimum == drop.Maximum then
+                        DropCount = drop.Minimum .. "x"
+                    else
+                        DropCount = drop.Minimum .. "x-" .. FormatNumber(drop.Maximum) .. "x"
+                    end
+
+                    -- Masukkan ke Table dengan Format Card UI
+                    if Colors and type(Colors) == "table" and Colors.Base and Colors.Wave then
+                        table.insert(bossDropIcons, {
+                            Card = true,
+                            Rate = drop.Chance .. "%",
+                            Title = drop.Item,
+                            Quantity = DropCount,
+                            Image = iconFound,
+                            Gradient = ColorSequence.new{
+                                ColorSequenceKeypoint.new(0, Colors.Base),
+                                ColorSequenceKeypoint.new(1, Colors.Wave)
+                            }
+                        })
+                    else
+                        -- Fallback jika gradient gagal load (jarang terjadi)
+                        table.insert(bossDropIcons, {
+                            Card = true,
+                            Rate = drop.Chance .. "%",
+                            Title = drop.Item,
+                            Quantity = DropCount,
+                            Image = iconFound,
+                            Gradient = ColorSequence.new(Color3.new(1,1,1)) 
+                        })
+                    end
+                end
+            end
+        end
     end
     
     -- Ambil Health Value untuk Sorting
@@ -1170,8 +1419,8 @@ for name, data in pairs(GlobalBossDB) do
         Desc = "HP: " .. (data.Health or "?"), 
         Value = name, 
         Icon = CharacterIcons[name] or nil, 
-        Images = bossDropIcons,
-        -- Simpan data untuk sorting (tidak tampil di UI)
+        Images = bossDropIcons, -- Sekarang berisi Data Card, bukan icon string biasa
+        -- Data untuk sorting internal
         SortMapIndex = mapIndex,
         SortHealth = healthVal
     })
@@ -1595,16 +1844,11 @@ task.spawn(function()
 end)
 
 -- STRONGER
-FM_Add("Stronger", MainTab:Toggle({Title="Auto Claim Heroes Expedition", Flag="ClaimExp_Cfg", Callback=function(v) isAutoClaimExpedition = v end}))
-FM_Add("Stronger", MainTab:Dropdown({Title="Expedition Map", Values=MapList, Value="None", Flag="ExpTarget_Cfg", Callback=function(v) expeditionTarget = (type(v)=="table" and v.Title) or v end}))
+-- [REMOVED EXPEDITION OLD UI]
 FM_Add("Stronger", MainTab:Dropdown({Title="Auto Hatch (Star)", Values=MapList, Value="None", Flag="HatchTarget_Cfg", Callback=function(v) targetStar = (type(v)=="table" and v.Title) or v end}))
 
 -- ============================================================================
---  AVATARS FEATURE (ENHANCED ICON & STATS)
--- ============================================================================
-
--- ============================================================================
---  AVATARS FEATURE (DUAL DROPDOWN & CONFIG SAVE)
+--  AVATARS FEATURE (GRADIENT STYLE)
 -- ============================================================================
 
 local avatarStatsUI -- Object Dropdown Stats
@@ -1624,7 +1868,21 @@ local function GetAvatarTotalPower(avatarName, currentLevel)
     return basePower * multiplier
 end
 
--- Fungsi Refresh List Dropdown (Update KEDUA Dropdown)
+-- Helper: Buat Gradient Berdasarkan Rarity
+local function CreateGradient(rarity)
+    if GlobalGradientDB and GlobalGradientDB.GetRarityColor then
+        local colors = GlobalGradientDB:GetRarityColor(rarity or "Common")
+        if colors and colors.Base and colors.Wave then
+            return ColorSequence.new{
+                ColorSequenceKeypoint.new(0, colors.Base),
+                ColorSequenceKeypoint.new(1, colors.Wave)
+            }
+        end
+    end
+    return nil
+end
+
+-- Fungsi Refresh List Dropdown
 local function RefreshAvatarList()
     local pData = getgenv().PlayerData
     local listItems = {}
@@ -1648,17 +1906,21 @@ local function RefreshAvatarList()
                 local totalPower = GetAvatarTotalPower(name, level)
                 local formattedTotal = string.format("%.2f", totalPower)
 
+                -- Format Item untuk Dropdown
                 table.insert(avatarsByWorld[worldName], {
                     Title = name, 
                     Desc = "Lvl " .. level .. " | Power: " .. formattedTotal .. "x", 
                     Value = name,
-                    Icon = globalData.Icon, 
-                    BasePower = basePower
+                    Icon = globalData.Icon,
+                    Rarity = globalData.Rarity, -- [PENTING] Kita butuh ini untuk Gradient
+                    BasePower = basePower,
+                    CurrentLevel = level,
+                    TotalPower = formattedTotal
                 })
             end
         end
 
-        -- 2. Sortir Map
+        -- 2. Sortir Map & Avatar
         local sortedMaps = {}
         for mapName, mapData in pairs(GlobalMapDB) do
             if avatarsByWorld[mapName] then
@@ -1672,13 +1934,11 @@ local function RefreshAvatarList()
             local mapName = mapInfo.Name
             local avatarsInMap = avatarsByWorld[mapName]
             
-            -- Sort Avatar: Base Power Kecil -> Besar
             table.sort(avatarsInMap, function(a, b) 
                 return a.BasePower < b.BasePower 
             end)
             
             for _, avatarItem in ipairs(avatarsInMap) do
-                avatarItem.Desc = avatarItem.Desc
                 table.insert(listItems, avatarItem)
             end
         end
@@ -1695,11 +1955,11 @@ local function RefreshAvatarList()
     end
 end
 
--- [UI Elements]
+-- [UI Elements Construction]
 local AvatarGroup = MainTab:Group({Title = "Avatar Manager"})
 FM_Add("Avatars", AvatarGroup)
 
--- 1. DROPDOWN EQUIP STATS
+-- 1. DROPDOWN EQUIP STATS (GRADIENT ADDED)
 avatarStatsUI = MainTab:Dropdown({
     Title = "Equip Stats (Power)",
     Desc = "Select avatar for stats multiplier",
@@ -1707,23 +1967,51 @@ avatarStatsUI = MainTab:Dropdown({
     AllowNone = true,
     Multi = false,
     Flag = "AvatarStats_Select", 
+    Image = "rbxassetid://84366761557806", 
     Callback = function(v)
-        if v then
-             local val = (type(v) == "table" and v.Value) or v
-             
-             -- [OPTIMISASI] Cek apakah avatar ini sudah terpasang di stats?
-             local currentEquipped = getgenv().PlayerData and getgenv().PlayerData.Avatar
-             
-             if currentEquipped ~= val then
-                 ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "Avatars", "Equip", val, n = 4}, "\2"})
-                 Notify("Stats", "Equipped: " .. val, "swords")
-             end
+        if v and type(v) == "table" then
+            local val = v.Value
+            local icon = v.Icon
+            local powerTxt = v.TotalPower
+            local lvl = v.CurrentLevel
+            local rarity = v.Rarity -- Ambil Rarity
+
+            -- [GRADIENT LOGIC]
+            local gradientObj = CreateGradient(rarity)
+
+            if icon then
+                if gradientObj then
+                    -- Set Image dengan Gradient
+                    avatarStatsUI:SetMainImage({
+                        Image = icon,
+                        Gradient = gradientObj
+                    },50)
+                -- else
+                --     -- Fallback jika gradient gagal
+                --     avatarStatsUI:SetMainImage(icon)
+                end
+                avatarStatsUI:SetValueImage(icon)
+            end
+            
+            avatarStatsUI:SetDesc("Active: " .. val .. "\nLvl " .. lvl .. " | Pow: " .. powerTxt .. "x")
+
+            -- Logic Equip Game
+            local currentEquipped = getgenv().PlayerData and getgenv().PlayerData.Avatar
+            if currentEquipped ~= val then
+                ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "Avatars", "Equip", val, n = 4}, "\2"})
+                Notify("Stats", "Equipped: " .. val, "swords")
+            end
+        else
+            -- Reset ke Default
+            avatarStatsUI:SetMainImage("rbxassetid://84366761557806")
+            avatarStatsUI:SetValueImage("rbxassetid://84366761557806")
+            avatarStatsUI:SetDesc("Select avatar for stats multiplier")
         end
     end
 })
 FM_Add("Avatars", avatarStatsUI)
 
--- 2. DROPDOWN EQUIP VISUAL
+-- 2. DROPDOWN EQUIP VISUAL (GRADIENT ADDED)
 avatarVisualUI = MainTab:Dropdown({
     Title = "Equip Visual (Cosmetic)",
     Desc = "Select avatar for appearance only",
@@ -1731,17 +2019,41 @@ avatarVisualUI = MainTab:Dropdown({
     AllowNone = true,
     Multi = false,
     Flag = "AvatarVisual_Select",
+    Image = "rbxassetid://84366761557806", 
     Callback = function(v)
-        if v then
-             local val = (type(v) == "table" and v.Value) or v
-             
-             -- [OPTIMISASI] Cek apakah avatar visual ini sudah terpasang?
-             local currentVisual = getgenv().PlayerData and getgenv().PlayerData.AvatarVisual
-             
-             if currentVisual ~= val then
-                 ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "Avatars", "Visual", val, n = 4}, "\2"})
-                 Notify("Visual", "Appearance: " .. val, "eye")
-             end
+        if v and type(v) == "table" then
+            local val = v.Value
+            local icon = v.Icon
+            local rarity = v.Rarity -- Ambil Rarity
+
+            -- [GRADIENT LOGIC]
+            local gradientObj = CreateGradient(rarity)
+            
+            if icon then
+                if gradientObj then
+                    avatarVisualUI:SetMainImage({
+                        Image = icon,
+                        Gradient = gradientObj
+                    },50)
+                else
+                    avatarVisualUI:SetMainImage(icon)
+                end
+                avatarVisualUI:SetValueImage(icon)
+            end
+            
+            avatarVisualUI:SetDesc("Active Visual: " .. val)
+
+            -- Logic Equip Game
+            local currentVisual = getgenv().PlayerData and getgenv().PlayerData.AvatarVisual
+            if currentVisual ~= val then
+                ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "Avatars", "Visual", val, n = 4}, "\2"})
+                Notify("Visual", "Appearance: " .. val, "eye")
+            end
+        else
+            -- Reset ke Default
+            avatarVisualUI:SetMainImage("rbxassetid://84366761557806")
+            avatarVisualUI:SetValueImage("rbxassetid://84366761557806")
+            avatarVisualUI:SetDesc("Select avatar for appearance only")
         end
     end
 })
@@ -1750,15 +2062,12 @@ FM_Add("Avatars", avatarVisualUI)
 -- [REALTIME CHECKER SYSTEM]
 task.spawn(function()
     local lastDataSignature = ""
-    
-    -- Tunggu sebentar sampai UI load, lalu refresh list pertama kali
     task.wait(1)
     RefreshAvatarList()
 
     while not Window.Destroyed do
         local pData = getgenv().PlayerData
         if pData and pData.Avatars then
-            -- Buat Signature unik: Nama1:Level1|Nama2:Level2|
             local currentSig = ""
             local keys = {}
             for k in pairs(pData.Avatars) do table.insert(keys, k) end
@@ -1769,13 +2078,138 @@ task.spawn(function()
                 currentSig = currentSig .. k .. ":" .. lvl .. "|"
             end
             
-            -- Cek Perubahan (Jika level up atau dapat avatar baru)
             if currentSig ~= lastDataSignature then
                 lastDataSignature = currentSig
                 RefreshAvatarList()
             end
         end
-        task.wait(1) -- Cek setiap 1 detik
+        task.wait(2)
+    end
+end)
+
+-- ============================================================================
+--  HEROES EXPEDITION FEATURE (FULL IMPLEMENTATION)
+-- ============================================================================
+
+local ExpGroup = MainTab:Group({Title = "Expedition Manager"})
+FM_Add("Expedition", ExpGroup)
+
+-- Vars
+local isAutoExpeditionSmart = false
+local selectedExpWorld = "XYZ Metropolis"
+local ExpStatusLabel = nil
+
+-- 1. Generate List World dari Database
+local ExpWorldList = {}
+if GlobalHeroesExpeditionDB then
+    for k, v in pairs(GlobalHeroesExpeditionDB) do
+        -- Kita filter agar hanya menampilkan nama map, bukan properti lain
+        if type(v) == "table" and v.Time then
+            table.insert(ExpWorldList, k)
+        end
+    end
+    table.sort(ExpWorldList) -- Urutkan abjad
+end
+
+-- 2. UI Elements
+FM_Add("Expedition", MainTab:Toggle({
+    Title = "Auto Expedition (Smart)",
+    Desc = "Auto Start, Wait & Claim Rewards",
+    Flag = "AutoExp_Smart_Cfg",
+    Callback = function(v) isAutoExpeditionSmart = v end
+}))
+
+FM_Add("Expedition", MainTab:Dropdown({
+    Title = "Select Target World",
+    Values = ExpWorldList,
+    Value = "XYZ Metropolis",
+    Flag = "ExpWorld_Select",
+    Callback = function(v) selectedExpWorld = v end
+}))
+
+ExpStatusLabel = MainTab:Paragraph({
+    Title = "Status: Idle",
+    Desc = "Waiting for activation...",
+    Image = "rbxassetid://116941678612804" -- Icon Power
+})
+FM_Add("Expedition", ExpStatusLabel)
+
+-- Helper: Format Waktu (Detik ke MM:SS)
+local function FormatTime(seconds)
+    if seconds <= 0 then return "Ready!" end
+    local m = math.floor(seconds / 60)
+    local s = seconds % 60
+    return string.format("%02d:%02d", m, s)
+end
+
+-- 3. LOGIC LOOP (Sesuai Decompile: Start -> Wait -> Claim)
+task.spawn(function()
+    while not Window.Destroyed do
+        if isAutoExpeditionSmart then
+            -- Pastikan data player ada
+            local pData = getgenv().PlayerData
+            
+            if pData and pData.HeroesExpedition then
+                local expData = pData.HeroesExpedition
+                local endTime = expData.EndTime -- Nil jika tidak ada ekspedisi aktif
+                
+                -- Update Status UI
+                if ExpStatusLabel then
+                    if endTime then
+                        local timeLeft = endTime - os.time()
+                        
+                        -- [PERBAIKAN DISINI]
+                        -- Kita coba baca dari Data dulu, kalau nil kita pakai pilihan dari Dropdown
+                        local currentMapName = expData.World or expData.Map or selectedExpWorld or "Unknown"
+
+                        if timeLeft > 0 then
+                            ExpStatusLabel:SetTitle("Status: Exploring...")
+                            ExpStatusLabel:SetDesc("Map: " .. currentMapName .. "\nTime Left: " .. FormatTime(timeLeft))
+                        else
+                            ExpStatusLabel:SetTitle("Status: Finished!")
+                            ExpStatusLabel:SetDesc("Collecting Rewards...")
+                        end
+                    else
+                        ExpStatusLabel:SetTitle("Status: Idle / Starting")
+                        ExpStatusLabel:SetDesc("Target: " .. (selectedExpWorld or "None"))
+                    end
+                end
+
+                -- LOGIKA UTAMA (Start / Claim)
+                if endTime then
+                    -- KASUS 1: Ekspedisi Sedang Berjalan / Selesai
+                    if os.time() >= endTime then
+                        -- Waktu habis, saatnya CLAIM
+                        ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({
+                            {"General", "HeroesExpedition", "Claim", n = 3}, 
+                            "\2"
+                        })
+                        Notify("Expedition", "Expedition Claimed!", "check")
+                        task.wait(2) 
+                    end
+                else
+                    -- KASUS 2: Tidak ada ekspedisi, saatnya START
+                    if selectedExpWorld and selectedExpWorld ~= "None" then
+                        -- Cek apakah Map Valid di Database
+                        if GlobalHeroesExpeditionDB[selectedExpWorld] then
+                            ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({
+                                {"General", "HeroesExpedition", "Start", selectedExpWorld, n = 4}, 
+                                "\2"
+                            })
+                            -- Notify("Expedition", "Started: " .. selectedExpWorld, "compass")
+                            task.wait(2)
+                        end
+                    end
+                end
+            end
+        else
+            -- Jika dimatikan
+             if ExpStatusLabel then
+                ExpStatusLabel:SetTitle("Status: Disabled")
+                ExpStatusLabel:SetDesc("Turn on Toggle to start.")
+             end
+        end
+        task.wait(1)
     end
 end)
 -- SETTINGS TAB
