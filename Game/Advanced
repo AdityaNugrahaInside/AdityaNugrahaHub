@@ -2059,15 +2059,18 @@ avatarVisualUI = MainTab:Dropdown({
 })
 FM_Add("Avatars", avatarVisualUI)
 
--- [REALTIME CHECKER SYSTEM]
+-- [REALTIME CHECKER SYSTEM - FINAL]
 task.spawn(function()
     local lastDataSignature = ""
+    
+    -- Load awal sekali saja
     task.wait(1)
     RefreshAvatarList()
 
     while not Window.Destroyed do
         local pData = getgenv().PlayerData
         if pData and pData.Avatars then
+            -- 1. Buat Signature
             local currentSig = ""
             local keys = {}
             for k in pairs(pData.Avatars) do table.insert(keys, k) end
@@ -2078,12 +2081,18 @@ task.spawn(function()
                 currentSig = currentSig .. k .. ":" .. lvl .. "|"
             end
             
+            -- 2. Cek Perubahan Data
             if currentSig ~= lastDataSignature then
-                lastDataSignature = currentSig
-                RefreshAvatarList()
+                -- 3. Cek apakah Dropdown sedang TERBUKA menggunakan .Opened
+                -- Kita cek kedua dropdown (Stats & Visual), jika salah satu terbuka, maka refresh.
+                if (avatarStatsUI and avatarStatsUI.Opened) or (avatarVisualUI and avatarVisualUI.Opened) then
+                    lastDataSignature = currentSig
+                    RefreshAvatarList()
+                    -- print("Data Refreshed because dropdown is open!")
+                end
             end
         end
-        task.wait(2)
+        task.wait(1)
     end
 end)
 
