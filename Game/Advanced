@@ -2908,44 +2908,60 @@ task.spawn(function()
 end)
 
 -- ============================================================================
---  PASTE KODE SMART AUTO EXECUTE DI SINI (PALING BAWAH)
+--  SMART AUTO EXECUTE (FIXED - NO DOUBLE EXECUTION)
 -- ============================================================================
+
+-- [PENGAMAN 1] Cek apakah script sudah berjalan di server ini?
+if getgenv().ANHub_Loaded then
+    warn("ANHub is already running! Stopping double execution.")
+    return -- Stop script jika sudah ada instance yang berjalan
+end
+getgenv().ANHub_Loaded = true -- Tandai script sudah berjalan
+
 local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+
+-- Variable untuk memastikan kita tidak mengantre 2 kali
+local hasQueued = false 
 
 local function QueueScript()
-    -- Deteksi fungsi queue bawaan executor
+    -- [PENGAMAN 2] Jika sudah pernah antre, jangan antre lagi
+    if hasQueued then return end
+    
     local queue_on_teleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport) or (request and request.queue_on_teleport)
     
     if queue_on_teleport then
-        -- 1. Ambil ID Universe Game saat ini (Game A)
+        hasQueued = true -- Kunci agar tidak bisa dipanggil lagi
+        
         local CurrentUniverseID = game.GameId
         
-        -- 2. Susun Script
+        -- Payload Script
         local Payload = string.format([[
+            -- Reset Global Flag di server baru agar script bisa jalan
+            getgenv().ANHub_Loaded = nil 
+            
             repeat task.wait() until game:IsLoaded()
             
-            -- [SAFETY CHECK]
             if game.GameId == %d then
                 pcall(function()
-                    -- JANGAN LUPA GANTI URL INI DENGAN RAW GITHUB KAMU YANG ASLI
                     loadstring(game:HttpGet("https://raw.githubusercontent.com/AdityaNugrahaInside/ANHub/refs/heads/main/Game/Advanced"))()
                 end)
             else
-                warn("ANHub: Script stopped because you switched to a different game.")
+                warn("ANHub: Script stopped (Different Game).")
             end
         ]], CurrentUniverseID)
         
-        -- 3. Masukkan ke antrean
         queue_on_teleport(Payload)
     end
 end
 
 -- Event Listener
 Players.LocalPlayer.OnTeleport:Connect(function(State)
+    -- Kita antrikan saat teleport benar-benar dimulai
     if State == Enum.TeleportState.Started or State == Enum.TeleportState.InProgress then
         QueueScript()
     end
 end)
 
--- Panggil sekali di awal (Opsional tapi direkomendasikan)
+-- Panggil sekali untuk jaga-jaga, tapi sekarang aman karena ada flag 'hasQueued'
 QueueScript()
