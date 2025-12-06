@@ -1242,30 +1242,6 @@ local FM_Category = FarmTab:Category({
     },
     Callback = FM_OnChange
 })
-
--- [MODIFIKASI STICKY CATEGORY]
-if FM_Category and FM_Category.ElementFrame and FarmTab.UIElements.ContainerFrameCanvas then
-    local CategoryFrame = FM_Category.ElementFrame
-    local Canvas = FarmTab.UIElements.ContainerFrameCanvas
-    local ScrollFrame = FarmTab.UIElements.ContainerFrame
-    
-    -- Pindahkan ke Canvas agar tidak ikut scroll
-    CategoryFrame.Parent = Canvas
-    
-    -- Ambil posisi Y awal dari ScrollFrame (biasanya tinggi Profile)
-    local startY = ScrollFrame.Position.Y.Offset
-    
-    -- Posisikan Category di bawah Profile
-    CategoryFrame.Position = UDim2.new(0, 0, 0, startY)
-    
-    -- Geser ScrollFrame ke bawah seukuran Category
-    local catHeight = CategoryFrame.Size.Y.Offset
-    local newY = startY + catHeight
-    
-    ScrollFrame.Position = UDim2.new(0, 0, 0, newY)
-    ScrollFrame.Size = UDim2.new(1, 0, 1, -newY)
-end
-
 FarmTab:Space({Columns=1})
 
 -- [MODIFIKASI: DROPDOWN UNTUK ENEMIES DENGAN IMAGES]
@@ -1434,7 +1410,68 @@ FM_Add("Accessories", AccToggle)
 
 local dungeonList, dungeonDB, raidList, raidDB = {}, {}, {}, {};
 local defenseList, defenseDB = {}, {};
+-- [TAMBAHAN: PIRATE TOWER VARIABLES]
+local pirateTowerList = {}
+local pirateTowerInfo = { Title = "Pirate Tower", Value = "PirateTower" }
 
+local function LoadPirateTowerData()
+    local success, module = pcall(function()
+        return require(ReplicatedStorage.Scripts.Configs.Gamemodes.PirateTower);
+    end);
+    if success and module then
+        local desc = "Floors: " .. (module.MAX_FLOOR or 100) .. " | Key Required";
+        local rewardImages = {}
+        if module.ChanceReward then
+            for rewardKey, _ in pairs(module.ChanceReward) do
+                local img = GetRewardAssetId(rewardKey)
+                if img then table.insert(rewardImages, img) end
+            end
+        end
+        table.sort(rewardImages)
+
+        pirateTowerInfo = {
+            Title = module.Display or "Pirate Tower",
+            Value = "PirateTower",
+            Desc = desc,
+            Images = rewardImages
+        }
+        -- Masukkan ke list untuk dropdown
+        table.insert(pirateTowerList, pirateTowerInfo);
+    end;
+end;
+
+LoadPirateTowerData();
+-- [TAMBAHAN: SHADOW GATE VARIABLES]
+local shadowGateList = {}
+local shadowGateInfo = { Title = "Shadow Gate", Value = "ShadowGate" }
+
+local function LoadShadowGateData()
+    local success, module = pcall(function()
+        return require(ReplicatedStorage.Scripts.Configs.Gamemodes.ShadowGate);
+    end);
+    if success and module then
+        local desc = "Waves: " .. (module.MAX_WAVE or 500) .. " | Key Required";
+        local rewardImages = {}
+        if module.ChanceReward then
+            for rewardKey, _ in pairs(module.ChanceReward) do
+                local img = GetRewardAssetId(rewardKey)
+                if img then table.insert(rewardImages, img) end
+            end
+        end
+        table.sort(rewardImages)
+
+        shadowGateInfo = {
+            Title = module.Display or "Shadow Gate",
+            Value = "ShadowGate",
+            Desc = desc,
+            Images = rewardImages
+        }
+        -- Masukkan ke list untuk dropdown
+        table.insert(shadowGateList, shadowGateInfo);
+    end;
+end;
+
+LoadShadowGateData();
 local function LoadDungeonData()
     local success, module = pcall(function()
         return require(ReplicatedStorage.Scripts.Configs.Gamemodes.Dungeon);
@@ -1554,9 +1591,7 @@ local function LogicGamemodes()
     local hrp = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"))
 
     while Config.AutoDungeon do
-        if Window.Destroyed then
-            break;
-        end;
+        if Window.Destroyed then break end;
         
         if not hrp or not hrp.Parent then
              hrp = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"))
@@ -1564,72 +1599,92 @@ local function LogicGamemodes()
 
         local currentMap = GetCurrentMapStatus();
         local inLobbyZone = false;
+        
+        -- Cek apakah kita ada di Lobby Dungeon (bukan di dalam match)
         if Workspace:FindFirstChild("Zones") and Workspace.Zones:FindFirstChild("Dungeon") then
             if isPlayerInZone(Workspace.Zones.Dungeon) then
                 inLobbyZone = true;
             end;
         end;
+
         local EnemiesFolder = Workspace:FindFirstChild("Enemies")
         local hasEnemies = EnemiesFolder and #EnemiesFolder:GetChildren() > 0
-        local isFightingZone = string.find(currentMap, ":") and (string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense"));
-        if currentMap == "Raid" then
-            isFightingZone = true
-        elseif currentMap == "Defense" then
-            isFightingZone = hasEnemies
+        local isFightingZone = string.find(currentMap, ":") and (string.find(currentMap, "Dungeon") or string.find(currentMap, "Raid") or string.find(currentMap, "Defense") or currentMap == "PirateTower" or currentMap == "ShadowGate");
+        
+        -- Logic khusus untuk Raid/Defense/KeyModes
+        if currentMap == "Raid" then isFightingZone = true 
+        elseif currentMap == "Defense" then isFightingZone = hasEnemies
+        elseif currentMap == "PirateTower" or currentMap == "ShadowGate" then isFightingZone = true 
         end
 
         if currentMap ~= "Unknown" then
             if isFightingZone then
+                -- [LOGIKA SAAT SEDANG BERTARUNG]
                 wasInGamemode = true;
 
                 if os.time() - refreshTimer > 10 then
                     RefreshEnemyData();
                     refreshTimer = os.time();
                 end;
-                if currentTargetObj then
-                    if currentTargetObj.Alive == false or (not currentTargetObj.Data) then
-                        currentTargetObj = nil;
-                    end;
-                end;
+                
+                -- Auto Target & Teleport Logic (Sama seperti sebelumnya)
+                if not currentTargetObj or currentTargetObj.Alive == false or (not currentTargetObj.Data) then
+                    currentTargetObj = nil
+                end
 
-                -- [MODIFIED: UNIFIED COMBAT LOGIC (Dungeon/Raid/Defense)]
-                -- Logic now consistently finds closest enemy and teleports to it, removing Raid/Boss restrictions.
+                local isRaid = string.find(currentMap, "Raid")
+                
                 if not currentTargetObj and hrp then
                     local closest, minDst = nil, math.huge;
                     local myPos = hrp.Position;
+                    local bossFound = false
 
                     for _, enemyList in pairs(GlobalEnemyMap) do
                         for _, enemyObj in ipairs(enemyList) do
                             if enemyObj.Alive == true and enemyObj.Data and enemyObj.Data.CFrame then
                                 local dst = (myPos - enemyObj.Data.CFrame.Position).Magnitude;
+                                local config = rawget(enemyObj, "Config")
+                                local isBoss = config and config.Difficult == "Emperor"
+
+                                if isRaid and isBoss then
+                                    closest = enemyObj; bossFound = true; break
+                                end
                                 if dst < minDst then
                                     minDst = dst;
-                                    closest = enemyObj;
+                                    if not bossFound then closest = enemyObj end
                                 end;
                             end;
                         end;
+                        if bossFound then break end
                     end;
 
                     if closest then
                         currentTargetObj = closest;
                         if currentTargetObj.Data and currentTargetObj.Data.CFrame then
-                            hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
-                            lastTeleportedUid = currentTargetObj.Uid
+                            local config = rawget(currentTargetObj, "Config")
+                            local isBoss = config and config.Difficult == "Emperor"
+                            
+                            if isRaid and isBoss and (not hasTeleportedToBossInRaid) then
+                                hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
+                                hasTeleportedToBossInRaid = true;
+                            else
+                                hrp.CFrame = currentTargetObj.Data.CFrame * CFrame.new(0, 5, 2);
+                            end
                         end;
                     end;
                 end;
                 task.wait(0.1);
+
             elseif inLobbyZone and wasInGamemode and (not isFightingZone) then
+                -- [LOGIKA SAAT KEMBALI KE LOBBY (SELESAI MATCH)]
                 currentTargetObj = nil;
-                lastTeleportedUid = nil;
                 hasTeleportedToBossInRaid = false;
-                if LastZone and LastZone ~= "" and not string.find(LastZone, "Dungeon:") and not string.find(LastZone, "Raid:") and not string.find(LastZone, "Defense:") and LastZone ~= "Unknown" then
+                
+                -- Teleport balik ke map farming awal
+                if LastZone and LastZone ~= "" and LastZone ~= "Unknown" and not string.find(LastZone, ":") then
+                    l:Notify({ Title = "Mode Finished", Content = "Returning to " .. LastZone, Icon = "map-pin", Duration = 3 });
                     if Reliable then
-                        pcall(function()
-                            Reliable:FireServer("Zone Teleport", {
-                                LastZone
-                            });
-                        end);
+                        pcall(function() Reliable:FireServer("Zone Teleport", { LastZone }); end);
                     end;
                     wasInGamemode = false;
                     task.wait(6);
@@ -1637,10 +1692,34 @@ local function LogicGamemodes()
                     wasInGamemode = false;
                 end;
             else
+                -- [LOGIKA AUTO JOIN (MEMILIH GAMEMODE)]
                 local t = os.date("*t");
                 local currentMinute = t.min;
                 local targetString, targetName = nil, "";
-                if Config.TargetDungeon then
+
+                -- 1. PRIORITAS UTAMA: KEY MODES (Pirate Tower & Shadow Gate)
+                -- Kita taruh paling atas agar tidak perlu menunggu jam Dungeon/Raid
+                
+                if not targetString and Config.TargetPirateTower and #Config.TargetPirateTower > 0 then
+                    local pData = getgenv().PlayerData
+                    local keyCount = (pData and pData.Materials and pData.Materials["PirateTowerModeKey"]) or 0
+                    if keyCount > 0 then
+                        targetString = "PirateTower"
+                        targetName = pirateTowerInfo.Title or "Pirate Tower"
+                    end
+                end
+
+                if not targetString and Config.TargetShadowGate and #Config.TargetShadowGate > 0 then
+                    local pData = getgenv().PlayerData
+                    local keyCount = (pData and pData.Materials and pData.Materials["ShadowPortalModeKey"]) or 0
+                    if keyCount > 0 then
+                        targetString = "ShadowGate"
+                        targetName = shadowGateInfo.Title or "Shadow Gate"
+                    end
+                end
+
+                -- 2. PRIORITAS KEDUA: TIME MODES (Dungeon/Raid/Defense)
+                if not targetString and Config.TargetDungeon then
                     for _, dName in pairs(Config.TargetDungeon) do
                         local data = dungeonDB[dName];
                         if data and currentMinute == data.Time then
@@ -1650,6 +1729,7 @@ local function LogicGamemodes()
                         end;
                     end;
                 end;
+
                 if not targetString and Config.TargetRaid then
                     for _, rName in pairs(Config.TargetRaid) do
                         local data = raidDB[rName];
@@ -1662,11 +1742,10 @@ local function LogicGamemodes()
                                 end;
                             end;
                         end;
-                        if targetString then
-                            break;
-                        end;
+                        if targetString then break end;
                     end;
                 end;
+
                 if not targetString and Config.TargetDefense then
                     for _, dName in pairs(Config.TargetDefense) do
                         local data = defenseDB[dName];
@@ -1679,24 +1758,26 @@ local function LogicGamemodes()
                                 end;
                             end;
                         end;
-                        if targetString then
-                            break;
-                        end;
+                        if targetString then break end;
                     end;
                 end;
 
+                -- EKSEKUSI JOIN
                 if targetString then
-                    if not string.find(currentMap, "Dungeon") and (not string.find(currentMap, "Raid:")) and (not string.find(currentMap, "Defense:")) then
+                    -- Simpan lokasi terakhir sebelum join
+                    if not string.find(currentMap, "Dungeon") and (not string.find(currentMap, "Raid")) and (not string.find(currentMap, "Defense")) and currentMap ~= "PirateTower" and currentMap ~= "ShadowGate" then
                         LastZone = currentMap;
                     end;
+                    
+                    l:Notify({ Title = "Auto Mode", Content = "Joining " .. targetName, Icon = "swords", Duration = 2 });
+                    
                     if Reliable then
                         pcall(function()
-                            Reliable:FireServer("Join Gamemode", {
-                                targetString
-                            });
+                            -- Menggunakan Format ANHub tapi Logika TigerHub (Langsung Join)
+                            Reliable:FireServer("Join Gamemode", { targetString });
                         end);
                     end;
-                    task.wait(5);
+                    task.wait(5); -- Tunggu proses teleport
                 end;
                 task.wait(1);
             end;
@@ -1797,6 +1878,40 @@ local DefenseDrop = FM_Add("GameModes", FarmTab:Dropdown({
     end
 }));
 
+-- [TAMBAHAN UI: PIRATE TOWER DROPDOWN]
+local PirateTowerDrop = FM_Add("GameModes", FarmTab:Dropdown({
+    Title = "Select Pirate Tower",
+    Multi = true, -- Multi true agar konsisten dengan format array, meski pilihannya cuma 1
+    AllowNone = true,
+    Flag = "PirateTower_Cfg",
+    Values = pirateTowerList,
+    ImageSize = UDim2.fromOffset(20, 20),
+    ImagePadding = 6,
+    Callback = function(val)
+        local t = {};
+        for _, v in pairs(val) do
+            table.insert(t, type(v) == "table" and v.Value or v);
+        end;
+        Config.TargetPirateTower = t;
+    end
+}));
+-- [TAMBAHAN UI: SHADOW GATE DROPDOWN]
+local ShadowGateDrop = FM_Add("GameModes", FarmTab:Dropdown({
+    Title = "Select Shadow Gate",
+    Multi = true, 
+    AllowNone = true,
+    Flag = "ShadowGate_Cfg",
+    Values = shadowGateList,
+    ImageSize = UDim2.fromOffset(20, 20),
+    ImagePadding = 6,
+    Callback = function(val)
+        local t = {};
+        for _, v in pairs(val) do
+            table.insert(t, type(v) == "table" and v.Value or v);
+        end;
+        Config.TargetShadowGate = t;
+    end
+}));
 task.spawn(function()
     local function GetNextTimeDiff(times, currentMin, currentSec)
         if not times or #times == 0 then return 0 end
