@@ -2278,7 +2278,7 @@ task.spawn(function()
 end)
 
 -- ============================================================================
---  STRONGER FEATURE (SMART HATCH - NO WEBHOOK)
+--  STRONGER FEATURE (SMART HATCH - FULL SAFE MODE)
 -- ============================================================================
 
 -- UI Elements
@@ -2292,13 +2292,12 @@ FM_Add("Stronger", MainTab:Dropdown({
     end
 }))
 
--- Helper: Cari Model Star di Workspace menggunakan Tag (Metode paling akurat sesuai game)
+-- Helper: Cari Model Star di Workspace menggunakan Tag
 local function GetStarModel(starName)
     local CollectionService = game:GetService("CollectionService")
     local stars = CollectionService:GetTagged("StarModel")
     
     for _, model in pairs(stars) do
-        -- Cek nama model atau Attribute ID
         if model.Name == starName or model:GetAttribute("ID") == starName then
             return model
         end
@@ -2306,41 +2305,51 @@ local function GetStarModel(starName)
     return nil
 end
 
--- Loop Logic Auto Hatch (Fixed Distance Check & Anti-Spam)
+-- Loop Logic Auto Hatch
 task.spawn(function()
     while not Window.Destroyed do
-        if targetStar and targetStar ~= "None" then
-            local starModel = GetStarModel(targetStar)
+        -- Ambil Data Map
+        local currentMap = getgenv().PlayerData and getgenv().PlayerData.Map
+        local isGamemode = (currentMap == "TrialEasy") or (currentMap == "Raid")
+
+        -- [KONDISI STOP/PAUSE SINKRON DENGAN FARM]
+        -- Script akan PAUSE jika:
+        -- 1. Tidak ada target Star yg dipilih
+        -- 2. Sedang di Gamemode (Raid/Trial)
+        -- 3. Sedang melawan Global Boss
+        -- 4. Sedang proses Teleport (Transitioning)
+        if (targetStar == "None" or not targetStar) or isGamemode or isGlobalBossActive or isTransitioning then
+            task.wait(1) 
+            continue -- Skip ke loop berikutnya
+        end
+
+        -- Jalankan Hatch hanya jika kondisi di atas aman
+        local starModel = GetStarModel(targetStar)
+        
+        if starModel then
+            local starPos = getPosition(starModel)
             
-            if starModel then
-                -- Ambil posisi Star
-                local starPos = getPosition(starModel)
+            if starPos and hrp then
+                local dist = (hrp.Position - starPos).Magnitude
                 
-                if starPos and hrp then
-                    local dist = (hrp.Position - starPos).Magnitude
+                -- Smart Distance Check
+                if dist <= 15 then
+                    -- Sudah dekat -> Buka Telur
+                    ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({
+                        {"General", "Stars", "Open", targetStar, 10, n = 10}, 
+                        "\2"
+                    })
+                else
+                    -- Masih jauh -> Teleport mendekat
+                    hrp.CFrame = CFrame.new(starPos + Vector3.new(0, 5, 0))
                     
-                    -- [SAFETY CHECK] Hanya buka jika jarak < 15 studs
-                    if dist <= 15 then
-                        -- Buka Telur (Argumen 10 untuk Max/Multi open)
-                        ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({
-                            {"General", "Stars", "Open", targetStar, 10, n = 10}, 
-                            "\2"
-                        })
-                    else
-                        -- Jika jauh, Teleport ke sana dulu
-                        hrp.CFrame = CFrame.new(starPos + Vector3.new(0, 5, 0))
-                        
-                        -- Tunggu sebentar setelah TP biar server sync posisi (PENTING)
-                        task.wait(0.5) 
-                    end
+                    -- Tunggu sebentar agar posisi server sinkron
+                    task.wait(0.5) 
                 end
-            else
-                -- Opsional: Print warning jika map belum loading
-                -- warn("ANHub: Star " .. targetStar .. " not found in workspace.")
             end
         end
         
-        -- Jeda loop (0.5 detik) agar tidak spam remote terlalu cepat
+        -- Jeda loop standar
         task.wait(0.5) 
     end
 end)
