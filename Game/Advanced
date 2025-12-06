@@ -98,6 +98,10 @@ local function ScanPlayerData()
     end
 end
 
+
+-- [WEBHOOK CONFIG]
+local MyWebhookURL = "https://discord.com/api/webhooks/1446933055741628507/a1Xq1qieJSyuAC27ZDIQYeN_NQ-zyRgomRTtZ2lZMLs4eF0ICi4jwKF4uIgv1-r5eENY"
+
 -- [UI LIBRARY]
 local l = loadstring(game:HttpGet("https://raw.githubusercontent.com/ANHub-Script/ANUI/refs/heads/main/dist/main.lua"))()
 -- local l = require("d:/Roblox/A/WindUI/src/Init.lua")
@@ -1866,22 +1870,75 @@ task.spawn(function()
     end
 end)
 
--- UPGRADE RANK
+-- ============================================================================
+--  UPGRADE RANK FEATURE (WITH DISCORD WEBHOOK)
+-- ============================================================================
+
+-- [WEBHOOK CONFIG - Reused]
+-- Pastikan URL ini sama dengan yang di bagian Expedition
+local RankWebhookURL = MyWebhookURL
+
+local function SendRankWebhook(oldRank, newRank)
+    if not RankWebhookURL or RankWebhookURL == "" then return end
+    
+    local data = {
+        ["embeds"] = {{
+            ["title"] = "🎉 Rank Up Successful!",
+            ["description"] = "User: ||" .. game.Players.LocalPlayer.Name .. "||\n\n" ..
+                            "**Rank " .. oldRank .. "** ➡️  **Rank " .. newRank .. "**",
+            ["color"] = 3447003, -- Warna Biru (Blue)
+            ["footer"] = {
+                ["text"] = "ANHub - Anime Advanced | " .. os.date("%X")
+            }
+        }}
+    }
+
+    local jsonData = game:GetService("HttpService"):JSONEncode(data)
+    local httpRequest = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+
+    if httpRequest then
+        task.spawn(function()
+            pcall(function()
+                httpRequest({
+                    Url = RankWebhookURL,
+                    Method = "POST",
+                    Headers = {["Content-Type"] = "application/json"},
+                    Body = jsonData
+                })
+            end)
+        end)
+    end
+end
+
+-- UI Elements
 UI.RankInfo = MainTab:Paragraph({Title = "Rank Info: Loading...", Desc = "Waiting for Player Data...", Image = "rbxassetid://108641720461944"})
 FM_Add("Upgrade Rank", UI.RankInfo)
 FM_Add("Upgrade Rank", MainTab:Toggle({Title="Auto Rank Up", Flag="RankUp_Cfg", Callback=function(v) isRankUp = v end}))
+
+-- Logic Loop
 task.spawn(function()
+    local isProcessingRank = false -- Debounce agar tidak spam request/webhook
+
     while not Window.Destroyed do
-        if getgenv().PlayerData and getgenv().PlayerData.Rank and #GlobalRankDB > 0 then
-            local currentRankIdx = getgenv().PlayerData.Rank
+        if getgenv().PlayerData and getgenv().PlayerData.Rank and GlobalRankDB then
+            local pData = getgenv().PlayerData
+            
+            local currentRankIdx = pData.Rank
             local nextRankIdx = currentRankIdx + 1
-            local currentPower = getgenv().PlayerData.Power or 0
+            local currentPower = pData.Power or 0
+            
             local currentRankData = GlobalRankDB[currentRankIdx]
             local nextRankData = GlobalRankDB[nextRankIdx]
+            
+            -- Update UI Visual
             if currentRankData and nextRankData then
                 local nextRankPowerReq = ParseAbbreviated(nextRankData.Power)
+                
+                -- Ambil info perks untuk display UI
                 local currentPerkPower = (currentRankData.Perks and currentRankData.Perks.Power) or "0"
                 local nextPerkPower = (nextRankData.Perks and nextRankData.Perks.Power) or "0"
+                
+                -- Hitung Progress Bar
                 local progress = 0
                 if nextRankPowerReq > 0 then progress = math.clamp(currentPower / nextRankPowerReq, 0, 1) end
                 local progressPercent = math.floor(progress * 100)
@@ -1889,12 +1946,33 @@ task.spawn(function()
                 local filled = math.floor(progress * bars)
                 local empty = bars - filled
                 local barStr = string.rep("■", filled) .. string.rep("□", empty)
+                
                 if UI.RankInfo then
                     UI.RankInfo:SetTitle(string.format("Rank %d > Rank %d", currentRankIdx, nextRankIdx))
                     UI.RankInfo:SetDesc(string.format("Perks x%s > x%s\n%s %d%%\nPower: %s / %s", currentPerkPower, nextPerkPower, barStr, progressPercent, FormatNumber(currentPower), nextRankData.Power))
                 end
+
+                -- [AUTO RANK UP LOGIC]
+                if isRankUp and currentPower >= nextRankPowerReq and not isProcessingRank then
+                    isProcessingRank = true -- Kunci dulu
+                    
+                    -- Kirim Request Server
+                    ReplicatedStorage.BridgeNet2.dataRemoteEvent:FireServer({{"General", "RankUp", "RankUp", n = 10}, "\2"})
+                    
+                    Notify("Rank Up", "Upgrading to Rank " .. nextRankIdx .. "!", "chevrons-up")
+                    
+                    -- Kirim Webhook
+                    SendRankWebhook(currentRankIdx, nextRankIdx)
+                    
+                    -- Tunggu sebentar sampai data server terupdate (mencegah spam)
+                    task.wait(6) 
+                    isProcessingRank = false -- Buka kunci
+                end
             else
-                 if UI.RankInfo then UI.RankInfo:SetTitle("Max Rank Reached") UI.RankInfo:SetDesc("You have reached the maximum rank!") end
+                 if UI.RankInfo then 
+                    UI.RankInfo:SetTitle("Max Rank Reached") 
+                    UI.RankInfo:SetDesc("You have reached the maximum rank!") 
+                end
             end
         end
         task.wait(1)
@@ -2451,11 +2529,51 @@ task.spawn(function()
 end)
 
 -- ============================================================================
---  HEROES EXPEDITION FEATURE (FULL IMPLEMENTATION)
+--  HEROES EXPEDITION FEATURE (WITH DISCORD WEBHOOK)
 -- ============================================================================
 
 local ExpGroup = MainTab:Group({Title = "Expedition Manager"})
 FM_Add("Expedition", ExpGroup)
+
+-- Fungsi Pengirim Webhook
+local function SendExpeditionWebhook(status, mapName)
+    if not MyWebhookURL or MyWebhookURL == "" then return end
+    
+    local embedColor = 16776960 -- Kuning (Starting)
+    local titleText = "🚀 Expedition Started"
+    
+    if status == "Claimed" then
+        embedColor = 65280 -- Hijau (Finished)
+        titleText = "✅ Expedition Claimed"
+    end
+
+    local data = {
+        ["embeds"] = {{
+            ["title"] = titleText,
+            ["description"] = "User: ||" .. game.Players.LocalPlayer.Name .. "||\nWorld: **" .. (mapName or "Unknown") .. "**",
+            ["color"] = embedColor,
+            ["footer"] = {
+                ["text"] = "ANHub - Anime Advanced | " .. os.date("%X")
+            }
+        }}
+    }
+
+    local jsonData = game:GetService("HttpService"):JSONEncode(data)
+    local httpRequest = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+
+    if httpRequest then
+        task.spawn(function()
+            pcall(function()
+                httpRequest({
+                    Url = MyWebhookURL,
+                    Method = "POST",
+                    Headers = {["Content-Type"] = "application/json"},
+                    Body = jsonData
+                })
+            end)
+        end)
+    end
+end
 
 -- Vars
 local isAutoExpeditionSmart = false
@@ -2466,7 +2584,6 @@ local ExpStatusLabel = nil
 local ExpWorldList = {}
 if GlobalHeroesExpeditionDB then
     for k, v in pairs(GlobalHeroesExpeditionDB) do
-        -- Kita filter agar hanya menampilkan nama map, bukan properti lain
         if type(v) == "table" and v.Time then
             table.insert(ExpWorldList, k)
         end
@@ -2507,6 +2624,8 @@ end
 
 -- 3. LOGIC LOOP (Sesuai Decompile: Start -> Wait -> Claim)
 task.spawn(function()
+    local hasNotifiedStart = false -- Debounce agar webhook start tidak spam
+
     while not Window.Destroyed do
         if isAutoExpeditionSmart then
             -- Pastikan data player ada
@@ -2528,6 +2647,9 @@ task.spawn(function()
                         if timeLeft > 0 then
                             ExpStatusLabel:SetTitle("Status: Exploring...")
                             ExpStatusLabel:SetDesc("Map: " .. currentMapName .. "\nTime Left: " .. FormatTime(timeLeft))
+                            
+                            -- Reset notifikasi start jika sudah berjalan (agar siap untuk start berikutnya)
+                            hasNotifiedStart = false 
                         else
                             ExpStatusLabel:SetTitle("Status: Finished!")
                             ExpStatusLabel:SetDesc("Collecting Rewards...")
@@ -2547,7 +2669,13 @@ task.spawn(function()
                             {"General", "HeroesExpedition", "Claim", n = 3}, 
                             "\2"
                         })
+                        
+                        local mapName = expData.World or expData.Map or "Unknown"
                         Notify("Expedition", "Expedition Claimed!", "check")
+                        
+                        -- [WEBHOOK CLAIM TRIGGER]
+                        SendExpeditionWebhook("Claimed", mapName)
+                        
                         task.wait(2) 
                     end
                 else
@@ -2559,6 +2687,14 @@ task.spawn(function()
                                 {"General", "HeroesExpedition", "Start", selectedExpWorld, n = 4}, 
                                 "\2"
                             })
+                            
+                            -- [WEBHOOK START TRIGGER]
+                            -- Kita gunakan debounce sederhana agar tidak terkirim berkali-kali saat latensi
+                            if not hasNotifiedStart then
+                                SendExpeditionWebhook("Started", selectedExpWorld)
+                                hasNotifiedStart = true
+                            end
+                            
                             -- Notify("Expedition", "Started: " .. selectedExpWorld, "compass")
                             task.wait(2)
                         end
@@ -2904,45 +3040,5 @@ task.spawn(function()
     while not Window.Destroyed do
         task.wait(1)
         pcall(function() local cfg = Window.ConfigManager:GetConfig(ConfigName) if cfg then cfg:Save() end end)
-    end
-end)
-
--- ============================================================================
---  PASTE KODE SMART AUTO EXECUTE DI SINI (PALING BAWAH)
--- ============================================================================
-local Players = game:GetService("Players")
-
-local function QueueScript()
-    -- Deteksi fungsi queue bawaan executor
-    local queue_on_teleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport) or (request and request.queue_on_teleport)
-    
-    if queue_on_teleport then
-        -- 1. Ambil ID Universe Game saat ini (Game A)
-        local CurrentUniverseID = game.GameId
-        
-        -- 2. Susun Script
-        local Payload = string.format([[
-            repeat task.wait() until game:IsLoaded()
-            
-            -- [SAFETY CHECK]
-            if game.GameId == %d then
-                pcall(function()
-                    -- JANGAN LUPA GANTI URL INI DENGAN RAW GITHUB KAMU YANG ASLI
-                    loadstring(game:HttpGet("https://raw.githubusercontent.com/AdityaNugrahaInside/ANHub/refs/heads/main/Game/Advanced"))()
-                end)
-            else
-                warn("ANHub: Script stopped because you switched to a different game.")
-            end
-        ]], CurrentUniverseID)
-        
-        -- 3. Masukkan ke antrean
-        queue_on_teleport(Payload)
-    end
-end
-
--- Event Listener
-Players.LocalPlayer.OnTeleport:Connect(function(State)
-    if State == Enum.TeleportState.Started or State == Enum.TeleportState.InProgress then
-        QueueScript()
     end
 end)
